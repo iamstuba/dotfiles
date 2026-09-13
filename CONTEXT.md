@@ -9,12 +9,16 @@ Any Mac this repo bootstraps. The personal MacBook is the primary target; the wo
 _Avoid_: laptop, host, work machine
 
 **Manifest**:
-The two tracked mise config files that together declare everything the personal machine gets. The global file (`config/mise/config.toml`, symlinked) holds tools and settings; the repo-root `mise.toml` holds packages, the symlink map, macOS defaults and hooks. Both hold tasks, split by whether the task names a repo path.
+The two tracked mise config files that together declare everything the personal machine gets. The global file (`config/mise/config.toml`, symlinked) holds tools and settings; the repo-root `mise.toml` holds packages, the symlink map, macOS defaults and hooks. Both hold tasks, split by whether the task can reach the repo through `{{ config_root }}`: the global file is read from outside the clone, so tasks there cannot.
 _Avoid_: Brewfile, package list
 
 **Overlay**:
 A third mise config file beside the global one, loaded only when `MISE_ENV` names it. Holds the tools one machine group gets on top of the manifest, such as work-only apps.
 _Avoid_: profile, environment file, work manifest
+
+**Tap package**:
+A Homebrew formula or cask that lives in a third-party tap rather than homebrew-core. mise cannot resolve one, so these stay out of the manifest's packages and brew installs them directly.
+_Avoid_: brew fallback, source build, third-party formula
 
 **Bootstrap**:
 One run of the manifest that takes a fresh Mac to fully configured. Rerunnable.
@@ -68,6 +72,14 @@ _Avoid_: keyboard layout, keymap
 The upstream Neovim starting config copied into the repo once and owned from then on. Never pulled again.
 _Avoid_: distro, distribution, framework
 
+**Git TUI**:
+The full-screen git client used for staging, branching and history. lazygit. Not where diffs get read for review.
+_Avoid_: TUI, porcelain, git client
+
+**Review TUI**:
+The full-screen client for reading a diff or a pull request. tuicr. Owns no git state.
+_Avoid_: TUI, diff viewer, code review tool
+
 **Agent multiplexer**:
 The terminal layer that owns the panes coding agents run in and reports whether each is working, idle or blocked. herdr. Does not queue work or restart agents.
 _Avoid_: orchestrator, harness, agent manager
@@ -89,8 +101,12 @@ _Avoid_: feature, epic, milestone
 _Avoid_: trial, test run
 
 **Smoke test**:
-`tests/smoke.sh`, what `mise run check` runs. Parses the manifest and runs every script in dry-run mode. Extended by each area, never split.
+`tests/smoke.sh`, what `mise run check` runs. One probe for each thing it covers: the manifest, every tracked config, and every script in dry-run mode. Extended by each area, never split.
 _Avoid_: CI, test suite
+
+**Probe**:
+One named section of the smoke test, passing or failing on its own line. Asks the tool it covers wherever it can, because a config file containing the right line proves only that someone wrote the line.
+_Avoid_: block, check, assertion, case
 
 **Launcher**:
 The field on Cmd+Space that opens apps, pastes from clipboard history and answers sums. Vorssaint's Command Bar. Searches files only in named folders.
