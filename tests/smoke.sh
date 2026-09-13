@@ -26,19 +26,45 @@ if command -v zsh >/dev/null 2>&1; then
 fi
 ok "syntax"
 
-# tomllib needs Python 3.11; the CLT ships 3.9, so a fresh Mac skips this and
-# relies on the mise dry-run below.
-if python3 -c 'import tomllib' 2>/dev/null; then
+# Every tracked TOML and YAML file reaches python through `yq -o json`. A
+# fresh Mac's python is the CLT's 3.9, which carries json and neither tomllib
+# nor PyYAML, so this block and the two YAML probes below skipped on every
+# machine this repo has ever run on. yq is in [tools]; the guard below is what
+# catches its absence, because the inventory block at the end only checks that
+# tools resolved on a machine that has mise.
+command -v yq >/dev/null 2>&1 \
+  || fail "yq is not on PATH; it is in [tools] and every config probe here reads through it"
+
+# One file at a time, and never as `yq ... | python3`. This file is sh with
+# set -eu and no pipefail, so a pipeline reports only python's status and a yq
+# failure would pass the moment the python side tolerated empty stdin.
+root_json=$(yq -p toml -o json mise.toml) || fail "mise.toml does not parse"
+global_json=$(yq -p toml -o json config/mise/config.toml) || fail "config/mise/config.toml does not parse"
+work_json=$(yq -p toml -o json config/mise/config.work.toml) || fail "config/mise/config.work.toml does not parse"
+
+# The shell area's tracked TOML, each one optional and each parsed on its own
+# so a failure names the file. Absent is the JSON null, never an empty string:
+# empty would let a yq that exited 0 with no output skip a file quietly, which
+# is the failure this whole port exists to remove.
+starship_json=null yazi_json=null tuicr_json=null
+if [ -f config/starship.toml ]; then
+  starship_json=$(yq -p toml -o json config/starship.toml) || fail "config/starship.toml does not parse"
+fi
+if [ -f config/yazi/theme.toml ]; then
+  yazi_json=$(yq -p toml -o json config/yazi/theme.toml) || fail "config/yazi/theme.toml does not parse"
+fi
+if [ -f config/tuicr/config.toml ]; then
+  tuicr_json=$(yq -p toml -o json config/tuicr/config.toml) || fail "config/tuicr/config.toml does not parse"
+fi
+
+ROOT_JSON=$root_json GLOBAL_JSON=$global_json WORK_JSON=$work_json \
+STARSHIP_JSON=$starship_json YAZI_JSON=$yazi_json TUICR_JSON=$tuicr_json \
 python3 - <<'PY' || fail "manifest shape"
-import sys, tomllib, pathlib
+import sys, os, json, pathlib
 
-def load(p):
-    with open(p, "rb") as f:
-        return tomllib.load(f)
-
-root = load("mise.toml")
-global_cfg = load("config/mise/config.toml")
-work = load("config/mise/config.work.toml")
+root = json.loads(os.environ["ROOT_JSON"])
+global_cfg = json.loads(os.environ["GLOBAL_JSON"])
+work = json.loads(os.environ["WORK_JSON"])
 errs = []
 
 if "dotfiles" in global_cfg or "bootstrap" in global_cfg:
@@ -70,16 +96,15 @@ age = global_cfg.get("settings", {}).get("minimum_release_age")
 if not isinstance(age, str):
     errs.append(f"minimum_release_age must be a duration string, got {age!r}")
 
-# Every tracked TOML the shell area added, parsed rather than diffed.
-for path in ("config/starship.toml", "config/yazi/theme.toml", "config/tuicr/config.toml"):
+# Every tracked TOML the shell area added, parsed rather than diffed. A file
+# that does not parse never reaches here: yq refuses it above and names it.
+for path, var in (("config/starship.toml", "STARSHIP_JSON"),
+                  ("config/yazi/theme.toml", "YAZI_JSON"),
+                  ("config/tuicr/config.toml", "TUICR_JSON")):
+    cfg = json.loads(os.environ[var])
+    if cfg is None:
+        continue
     p = pathlib.Path(path)
-    if not p.exists():
-        continue
-    try:
-        cfg = load(path)
-    except tomllib.TOMLDecodeError as exc:
-        errs.append(f"{path} does not parse: {exc}")
-        continue
     if path == "config/starship.toml":
         selected = cfg.get("palette")
         if selected and selected not in cfg.get("palettes", {}):
@@ -104,9 +129,6 @@ for e in errs:
 sys.exit(1 if errs else 0)
 PY
 ok "manifest shape"
-else
-  printf 'skip manifest shape: python3 has no tomllib\n'
-fi
 
 # HOME is a temp directory so nothing on this Mac is read as state.
 tmp_home=$(mktemp -d)
@@ -275,13 +297,6 @@ if command -v zsh >/dev/null 2>&1; then
     || fail "shell: a login shell puts \$DOTFILES/bin behind /usr/bin"
 
   want env "^EZA_CONFIG_DIR=$zsh_home/.config/eza$" "EZA_CONFIG_DIR does not point at the tracked theme directory"
-  [ -f "$root/config/eza/theme.yml" ] || fail "shell: config/eza/theme.yml is missing"
-  if python3 -c 'import yaml' 2>/dev/null; then
-    python3 -c 'import yaml,sys; yaml.safe_load(open("config/eza/theme.yml"))' \
-      || fail "config/eza/theme.yml does not parse"
-  else
-    printf 'skip eza theme parse: python3 has no yaml module\n'
-  fi
   if [ -f "$root/config/bat/themes/tokyonight_night.tmTheme" ]; then
     want env "^BAT_THEME=tokyonight_night$" "BAT_THEME does not name the tracked bat theme"
   else
@@ -522,18 +537,17 @@ else
   printf 'skip git config: git is not on PATH\n'
 fi
 
-# lazygit, parsed rather than run. It has no flag that dumps the config it
-# resolved, only its defaults, and it wants a terminal. So the file is read the
-# way the eza theme is, under the same python3 yaml guard, with the same
-# existence check in front of it: on a Mac whose python3 is the CLT's 3.9 the
-# manifest block skips too, and nothing else would notice the file was gone.
-[ -f config/lazygit/config.yml ] || fail "lazygit: config/lazygit/config.yml is missing"
-if python3 -c 'import yaml' 2>/dev/null; then
-python3 - <<'LAZYGIT' || fail "lazygit config"
-import sys, yaml
+# Both tracked YAML files, through one probe. Each names dotted paths and the
+# value it expects, so a missing path and a changed value fail separately.
+probe_yaml() {
+  # A label, the file, and a JSON object of path to expected value.
+  [ -f "$2" ] || fail "$1: $2 is missing"
+  cfg_json=$(yq -p yaml -o json "$2") || fail "$2 does not parse"
+  SRC=$2 CFG_JSON=$cfg_json WANT_JSON=$3 python3 - <<'PROBE' || fail "$1"
+import sys, os, json
 
-with open("config/lazygit/config.yml") as f:
-    cfg = yaml.safe_load(f)
+cfg = json.loads(os.environ["CFG_JSON"])
+src = os.environ["SRC"]
 errs = []
 missing = object()
 
@@ -545,30 +559,45 @@ def resolve(path):
         node = node[key]
     return node
 
-want = {
-    "os.editPreset": "nvim-remote",
-    "gui.nerdFontsVersion": "3",
-    "disableStartupPopups": True,
-    "git.paging.colorArg": "always",
-    "git.paging.pager": "delta --dark --paging=never",
-    # One colour. It fails when the theme block is absent, truncated or recoloured.
-    "gui.theme.activeBorderColor": ["#ff9e64", "bold"],
-}
-for path, expected in want.items():
+for path, expected in json.loads(os.environ["WANT_JSON"]).items():
     got = resolve(path)
     if got is missing:
-        errs.append(f"lazygit: {path} is missing")
+        errs.append(f"{src}: {path} is missing")
     elif got != expected:
-        errs.append(f"lazygit: {path} is {got!r}, expected {expected!r}")
+        errs.append(f"{src}: {path} is {got!r}, expected {expected!r}")
 
 for e in errs:
     print("  " + e, file=sys.stderr)
 sys.exit(1 if errs else 0)
-LAZYGIT
-ok "lazygit config"
-else
-  printf 'skip lazygit config: python3 has no yaml module\n'
-fi
+PROBE
+  ok "$1"
+}
+
+# The eza theme, out of the zsh block where it used to live. Nothing here needs
+# zsh, so a machine without one skipped it for no reason.
+#
+# It used to assert only that the file parses, weaker than every other theme
+# probe here. colourful is what eza wants before it honours most of the file,
+# the directory colour is the one most visible on screen, and the last key in
+# the file catches a truncated fetch. A fetch through a markdown converter has
+# already stripped one tracked theme in this repo.
+probe_yaml "eza theme" config/eza/theme.yml '{
+  "colourful": true,
+  "filekinds.directory.foreground": "#7aa2f7",
+  "broken_path_overlay.foreground": "#ff007c"
+}'
+
+# lazygit, parsed rather than run. It has no flag that dumps the config it
+# resolved, only its defaults, and it wants a terminal. One theme colour is
+# enough: it fails when the theme block is absent, truncated or recoloured.
+probe_yaml "lazygit config" config/lazygit/config.yml '{
+  "os.editPreset": "nvim-remote",
+  "gui.nerdFontsVersion": "3",
+  "disableStartupPopups": true,
+  "git.paging.colorArg": "always",
+  "git.paging.pager": "delta --dark --paging=never",
+  "gui.theme.activeBorderColor": ["#ff9e64", "bold"]
+}'
 
 # The real parser, when a mise exists. The rehearsal is where this runs.
 if command -v mise >/dev/null 2>&1; then
@@ -645,7 +674,9 @@ tools_map() {
   # Read off a real install rather than guessed: every tool here was installed
   # into a throwaway HOME on 2026-09-13 with mise 2026.9.6 and the binaries
   # listed. Only the commands a tool is wanted for are asserted, so pnpm's pn,
-  # pnpx and pnx and node's corepack, npm and npx are left out.
+  # pnpx and pnx and node's corepack, npm and npx are left out. yq joined
+  # [tools] after that run, with the parser swap above; its release archive
+  # carries one binary and it is named yq.
   #
   # An exception carries `-` in place of its commands and a reason after a #.
   # There are none. If this list ever reaches two or three, the rule that
@@ -659,6 +690,7 @@ ripgrep rg
 zoxide zoxide
 bat bat
 jq jq
+yq yq
 yazi yazi ya
 starship starship
 glow glow
