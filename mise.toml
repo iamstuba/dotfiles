@@ -31,7 +31,6 @@ min_version = "2026.8.15"  # last release that changed the dotfiles semantics we
 "brew-cask:vorssaint" = "latest"
 "brew-cask:grammarly-desktop" = "latest"
 "brew-cask:handy" = "latest"
-"brew-cask:anarlog" = "latest"
 "brew-cask:font-monaspace" = "latest"
 "brew-cask:font-symbols-only-nerd-font" = "latest"
 "brew-cask:font-sketchybar-app-font" = "latest"

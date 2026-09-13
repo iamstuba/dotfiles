@@ -42,12 +42,6 @@ Slack
 
 - Preferences > Appearance > Custom theme, paste `#1a1b26,#16161e,#bb9af7,#283457`.
 
-Anarlog
-
-- Open it, allow Microphone, System Audio Recording (Privacy & Security > Screen & System Audio Recording, "System Audio Recording Only") and Calendars.
-- Settings > Privacy: turn off "Share usage data" and error reporting.
-- Pick a summary model or live with transcripts.
-
 Grammarly Desktop
 
 - Open it, sign in, allow Accessibility. Add Ghostty to Settings > Block list.
