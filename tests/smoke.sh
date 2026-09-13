@@ -16,6 +16,14 @@ for f in install.sh tests/smoke.sh bin/*; do
     *) sh -n "$f" || fail "syntax $f" ;;
   esac
 done
+# The zsh files carry no shebang, because they are sourced and never run.
+if command -v zsh >/dev/null 2>&1; then
+  for f in home/.zshenv config/zsh/.zprofile config/zsh/.zshrc \
+           config/zsh/aliases.zsh config/zsh/functions.zsh; do
+    [ -f "$f" ] || continue
+    zsh -n "$f" || fail "syntax $f"
+  done
+fi
 ok "syntax"
 
 # tomllib needs Python 3.11; the CLT ships 3.9, so a fresh Mac skips this and
@@ -62,6 +70,21 @@ age = global_cfg.get("settings", {}).get("minimum_release_age")
 if not isinstance(age, str):
     errs.append(f"minimum_release_age must be a duration string, got {age!r}")
 
+# Every tracked TOML the shell area added, parsed rather than diffed.
+for path in ("config/starship.toml", "config/yazi/theme.toml", "config/tuicr/config.toml"):
+    p = pathlib.Path(path)
+    if not p.exists():
+        continue
+    try:
+        cfg = load(path)
+    except tomllib.TOMLDecodeError as exc:
+        errs.append(f"{path} does not parse: {exc}")
+        continue
+    if path == "config/starship.toml":
+        selected = cfg.get("palette")
+        if selected and selected not in cfg.get("palettes", {}):
+            errs.append(f"starship selects palette {selected!r}, which it does not define")
+
 for name in ("bootstrap", "setup-git", "refresh-unslop", "check"):
     if name not in root.get("tasks", {}):
         errs.append(f"repo-root task missing: {name}")
@@ -107,6 +130,161 @@ out=$(HOME=$tmp_home DOTFILES=$root DOTFILES_WORK=1 GIT_NAME=Test GIT_EMAIL=test
 echo "$out" | grep -q 'env = \["work"\]' || fail "install: work answer did not write miserc.toml"
 sh install.sh --bogus >/dev/null 2>&1 && fail "install: unknown argument accepted"
 ok "install.sh --dry-run"
+
+# The shell, started for real. Grepping a config file for the line that was
+# supposed to set something proves a string is present; `setopt` in a loaded
+# shell proves the option is on.
+if command -v zsh >/dev/null 2>&1; then
+  zsh_home=$(mktemp -d)
+  zsh_err=$(mktemp)
+  trap 'rm -rf "$tmp_home" "$zsh_home" "$zsh_err"' EXIT
+  mkdir -p "$zsh_home/.config"
+  # Exactly what bootstrap links, so .zshenv resolves DOTFILES through a symlink.
+  ln -s "$root/home/.zshenv" "$zsh_home/.zshenv"
+  ln -s "$root/config/zsh" "$zsh_home/.config/zsh"
+
+  # ZDOTDIR points into tracked space, so a shell that writes under it dirties
+  # the working tree. Compared before against after rather than required
+  # empty, so the check still means something with work in progress.
+  before=$(git -C "$root" status --porcelain 2>/dev/null || true)
+
+  # ZDOTDIR is unset for the probe. A shell inherits it from whoever runs
+  # `mise run check`, and zsh reads $ZDOTDIR/.zshenv in preference to
+  # $HOME/.zshenv, so leaving it set tests the caller's install, not this one.
+  # The output is cut into labelled sections, so an alias cannot satisfy an
+  # assertion meant for a key binding.
+  out=$(unset ZDOTDIR; HOME=$zsh_home zsh -i -c '
+    echo "### env";       printenv
+    echo "### histfile";  echo "HISTFILE=$HISTFILE"
+    # Physical, because ZDOTDIR reaches the repo through a symlink and the
+    # literal path looks like it is under $HOME either way.
+    echo "HISTDIR=$(cd ${HISTFILE:h} && pwd -P)"
+    echo "### path";      print -l $path
+    echo "### setopt";    setopt
+    echo "### bindkey";   bindkey
+    # Resolved the way .zshrc resolves it, so this tracks the config rather
+    # than assuming every terminal sends the same sequence for Delete.
+    echo "### delkey";    bindkey -- "${terminfo[kdch1]:-^[[3~}"
+    echo "### alias";     alias
+    echo "### functions"; functions +
+  ' 2>"$zsh_err") || fail "interactive zsh exited non-zero"
+  if [ -s "$zsh_err" ]; then
+    cat "$zsh_err" >&2
+    fail "interactive zsh wrote to stderr; a guard is missing"
+  fi
+
+  after=$(git -C "$root" status --porcelain 2>/dev/null || true)
+  [ "$before" = "$after" ] || fail "a shell load changed the working tree"
+
+  # One labelled block of the probe output. printf, not echo: the lpath alias
+  # body contains a literal backslash-n, and echo turns it into a real newline
+  # and splits the line in two.
+  section() {
+    printf '%s\n' "$out" | awk -v want="### $1" '$0 == want { f = 1; next } /^### / { f = 0 } f'
+  }
+  want() {  # section-name pattern message
+    section "$1" | grep -q -- "$2" || fail "shell: $3"
+  }
+  deny() {
+    section "$1" | grep -q -- "$2" && fail "shell: $3"
+    return 0
+  }
+
+  for var in XDG_CONFIG_HOME ZDOTDIR EDITOR GIT_EDITOR RIPGREP_CONFIG_PATH \
+             EZA_CONFIG_DIR BAT_THEME; do
+    want env "^$var=" "$var is not exported"
+  done
+  want path "^$root/bin$" "\$DOTFILES/bin is not on PATH"
+  want path "^$zsh_home/.local/bin$" "~/.local/bin is not on PATH"
+
+  deny histfile "^HISTDIR=$root" "HISTFILE resolves into the repo"
+  want histfile "^HISTFILE=$zsh_home/" "HISTFILE is not under \$HOME"
+  # The compdump is the other half of the same trap, reached through the symlink.
+  for stray in .zsh_history .zcompdump; do
+    [ -e "$root/config/zsh/$stray" ] && fail "shell: a load left $stray in tracked space"
+  done
+
+  for opt in sharehistory extendedhistory histignorealldups histignorespace \
+             histreduceblanks interactivecomments extendedglob nolistbeep; do
+    want setopt "^$opt$" "$opt is not set"
+  done
+  deny setopt '^incappendhistory$' "INC_APPEND_HISTORY is on alongside SHARE_HISTORY"
+
+  # Anchored on the binding, not the widget name. `functions +` lists
+  # edit-command-line whether or not anything is bound to it, so an unanchored
+  # grep passed with the bindkey line deleted.
+  want bindkey '^"\^G" edit-command-line$' "Ctrl-G is not bound"
+  want bindkey '^"\^@" autosuggest-accept$' "Ctrl-Space is not bound"
+  want bindkey '^"\^\[\[1;5C" forward-word$' "Ctrl-right is not bound"
+  want bindkey '^"\^\[\[1;5D" backward-word$' "Ctrl-left is not bound"
+  want delkey 'delete-char' "the delete key is not bound"
+
+  for name in gs gss gwip gll lg ll l reload! cleanup lpath; do
+    want alias "^$name=" "alias $name is missing"
+  done
+  want alias 'grep -qe "--wip--"' "gunwip still passes its pattern as an option"
+  # Counted from the file, not from memory: the number moves every time
+  # an alias is added.
+  count=$(section alias | grep -c "^g[a-z]*='\{0,1\}git " || true)
+  [ "$count" = 30 ] || fail "shell: $count git aliases, expected 30"
+
+  for name in c h g md; do
+    want functions "^$name$" "function $name is missing"
+  done
+
+  # Every alias the shell defines must be one this repo wrote or one zsh ships.
+  # An allowlist rather than a denylist of employer names, so it catches a leak
+  # this test was never told to look for, and so no employer is named here.
+  zsh -f -i -c 'alias' 2>/dev/null | cut -d= -f1 > "$zsh_home/allowed"
+  sed -n 's/^alias \([^=]*\)=.*/\1/p' "$root/config/zsh/aliases.zsh" >> "$zsh_home/allowed"
+  sort -u -o "$zsh_home/allowed" "$zsh_home/allowed"
+  section alias | cut -d= -f1 | sort -u > "$zsh_home/loaded"
+  unexpected=$(comm -23 "$zsh_home/loaded" "$zsh_home/allowed")
+  [ -z "$unexpected" ] || fail "shell: aliases not in the tracked file: $(echo $unexpected)"
+
+  # An allowed alias can still carry a work path or a work host in its body.
+  deny alias '/Users/\|[a-z0-9-]\{2,\}\.\(com\|io\|dev\|net\|org\)' \
+    "an alias body carries a personal path or a remote host"
+
+  # .zprofile runs for login shells only, so a non-login probe never reads it.
+  # macOS /etc/zprofile runs path_helper first and appends what .zshenv set
+  # behind /usr/bin, which is the order .zprofile exists to correct.
+  # PATH is scrubbed to the system minimum first. Inheriting this shell's PATH
+  # would put Homebrew there already and the next assertion could never fail.
+  login=$(unset ZDOTDIR; HOME=$zsh_home PATH=/usr/bin:/bin zsh -l -i -c 'print -l $path' 2>/dev/null) \
+    || fail "login zsh exited non-zero"
+  # Position, not presence. A Mac that once had Homebrew installed by hand
+  # keeps /etc/paths.d/homebrew, so path_helper supplies /opt/homebrew/bin on
+  # its own and a presence check can never fail. Only .zprofile's line puts it
+  # ahead of /usr/local/bin.
+  at() {
+    printf '%s\n' "$login" | grep -n -x -- "$1" | head -1 | cut -d: -f1
+  }
+  brew_at=$(at /opt/homebrew/bin); local_at=$(at /usr/local/bin)
+  repo_at=$(at "$root/bin"); usr_at=$(at /usr/bin)
+  [ -n "$brew_at" ] && [ -n "$local_at" ] && [ "$brew_at" -lt "$local_at" ] \
+    || fail "shell: .zprofile did not put Homebrew ahead of /usr/local/bin"
+  [ -n "$repo_at" ] && [ -n "$usr_at" ] && [ "$repo_at" -lt "$usr_at" ] \
+    || fail "shell: a login shell puts \$DOTFILES/bin behind /usr/bin"
+
+  want env "^EZA_CONFIG_DIR=$zsh_home/.config/eza$" "EZA_CONFIG_DIR does not point at the tracked theme directory"
+  [ -f "$root/config/eza/theme.yml" ] || fail "shell: config/eza/theme.yml is missing"
+  if python3 -c 'import yaml' 2>/dev/null; then
+    python3 -c 'import yaml,sys; yaml.safe_load(open("config/eza/theme.yml"))' \
+      || fail "config/eza/theme.yml does not parse"
+  else
+    printf 'skip eza theme parse: python3 has no yaml module\n'
+  fi
+  if [ -f "$root/config/bat/themes/tokyonight_night.tmTheme" ]; then
+    want env "^BAT_THEME=tokyonight_night$" "BAT_THEME does not name the tracked bat theme"
+  else
+    printf 'skip BAT_THEME: config/bat/themes/tokyonight_night.tmTheme is not fetched yet\n'
+  fi
+
+  ok "interactive zsh"
+else
+  printf 'skip interactive zsh: zsh is not on PATH\n'
+fi
 
 # The real parser, when a mise exists. The rehearsal is where this runs.
 if command -v mise >/dev/null 2>&1; then

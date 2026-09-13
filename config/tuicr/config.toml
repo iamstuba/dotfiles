@@ -1,0 +1,8 @@
+# The bundled themes carry tokyo-night-storm and tokyo-night-day but no night
+# variant. Storm is one shade off the rest of the stack; a hand-written
+# local theme needs every palette key, which is not worth it against a project
+# shipping a release a week.
+theme = "tokyo-night-storm"
+editor = "nvim"
+# mise owns the version, so tuicr should not check for its own updates.
+no_update_check = true

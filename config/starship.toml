@@ -1,0 +1,62 @@
+"$schema" = 'https://starship.rs/config-schema.json'
+
+# Blank line between the last command's output and the next prompt.
+add_newline = true
+
+# Two lines: everything that has something to say, then the prompt character
+# alone, so a long path never squeezes what gets typed.
+format = """
+$directory\
+$git_branch\
+$git_status\
+$nodejs\
+$cmd_duration
+$character"""
+
+# Tokyo Night Night. Module colours below stay ANSI names, which Ghostty
+# already paints; the palette only supplies the shades the ANSI 16 lack.
+palette = "tokyonight"
+
+[palettes.tokyonight]
+accent = "#7aa2f7"
+red = "#f7768e"
+green = "#9ece6a"
+yellow = "#e0af68"
+magenta = "#bb9af7"
+cyan = "#7dcfff"
+muted = "#565f89"
+
+[directory]
+truncation_length = 3     # last three segments at most
+truncate_to_repo = true   # inside a repo, show the path from the repo root
+style = "bold cyan"
+format = "[$path]($style) "
+
+[git_branch]
+symbol = " "
+style = "bold purple"
+format = "[$symbol$branch]($style) "
+
+[git_status]
+style = "bold yellow"
+format = '([\[$all_status$ahead_behind\]]($style) )'
+
+[nodejs]
+symbol = " "
+style = "bold green"
+format = "[$symbol($version)]($style) "
+# A real Node project, not every loose .js file.
+detect_files = ["package.json", ".nvmrc", ".node-version"]
+detect_extensions = []
+
+[cmd_duration]
+# Agents run long commands and this says how long, quietly. The colour is an
+# ANSI name like every other module's, which Ghostty paints from the same
+# palette; the [palettes] block above is for shades the ANSI 16 lack.
+min_time = 2000
+style = "bright-black"
+format = "[$duration]($style) "
+
+[character]
+success_symbol = "[❯](bold green)"
+error_symbol = "[❯](bold red)"

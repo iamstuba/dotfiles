@@ -48,6 +48,20 @@ min_version = "2026.8.15"  # last release that changed the dotfiles semantics we
 "~/.config/mise/config.toml" = "config/mise/config.toml"            # file-level: miserc.toml lives beside it
 "~/.config/mise/config.work.toml" = "config/mise/config.work.toml"  # inert unless MISE_ENV names work
 
+# shell. ~/.zshenv is what finds the clone; everything else hangs off the
+# XDG_CONFIG_HOME it exports. config/zsh is a directory symlink, so HISTFILE
+# and the compdump are pinned to $HOME.
+"~/.zshenv" = "home/.zshenv"
+"~/.config/zsh" = "config/zsh"
+"~/.config/starship.toml" = "config/starship.toml"
+"~/.config/ripgrep/config" = "config/ripgrep/config"
+"~/.config/btop/btop.conf" = "config/btop/btop.conf"
+"~/.config/btop/themes/tokyonight_night.theme" = "config/btop/themes/tokyonight_night.theme"
+"~/.config/eza/theme.yml" = "config/eza/theme.yml"
+"~/.config/yazi/theme.toml" = "config/yazi/theme.toml"
+"~/.config/tuicr/config.toml" = "config/tuicr/config.toml"
+# Still reserved, still missing its source: ~/.config/bat/themes/tokyonight_night.tmTheme.
+
 # ---------------------------------------------------------- macos defaults --
 # Vetoed line by line. Arrays, dicts, -currentHost and sudo writes are
 # in bin/macos-post-defaults.
