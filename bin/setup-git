@@ -1,0 +1,119 @@
+#!/bin/sh
+# Local git identity, profiles, the one SSH key and SSH remotes. Run by
+# `mise run setup-git` and by the installer. Rerunnable: every step skips
+# what exists. --dry-run or DRY_RUN=1 prints.
+set -eu
+
+case "${1:-}" in --dry-run) DRY_RUN=1 ;; esac
+run() { if [ "${DRY_RUN:-}" ]; then echo "+ $*"; else "$@"; fi; }
+die() { echo "setup-git: $*" >&2; exit 1; }
+
+DOTFILES=${DOTFILES:-$HOME/Projects/iamstuba/dotfiles}
+key=$HOME/.ssh/id_ed25519_github
+scopes=admin:public_key,admin:ssh_signing_key
+
+# Identity: environment first, prompts second, never a hang without a TTY.
+ask() {
+  eval "val=\${$1:-}"
+  if [ -z "$val" ]; then
+    [ -t 0 ] || die "$1 is unset and there is no terminal to ask"
+    printf '%s: ' "$2"
+    read -r val
+  fi
+  eval "$1=\$val"
+}
+ask GIT_NAME "Git name"
+ask GIT_EMAIL "Git email"
+if [ -z "${GIT_PROFILES+set}" ]; then
+  GIT_PROFILES=
+  if [ -t 0 ]; then
+    printf 'Profiles as dir=email, comma separated, or empty: '
+    read -r GIT_PROFILES
+  fi
+fi
+
+# -p ssh keeps gh out of git's credential config; the key upload is ours.
+if ! gh auth status >/dev/null 2>&1; then
+  run gh auth login -w -p ssh --skip-ssh-key -s "$scopes"
+fi
+
+# The installer normally made the key already, so the passphrase prompt came early.
+if [ ! -f "$key" ]; then
+  run ssh-keygen -t ed25519 -C "$GIT_EMAIL" -f "$key"
+  run ssh-add --apple-use-keychain "$key"
+fi
+
+# Registered twice, once per use. GitHub refuses a duplicate, so check first.
+pub=$(cut -d' ' -f2 "$key.pub" 2>/dev/null || true)
+register() {
+  if [ -n "$pub" ] && [ -z "${DRY_RUN:-}" ] && gh ssh-key list 2>/dev/null | grep -F "$pub" | grep -q "$1"; then
+    return 0
+  fi
+  if ! run gh ssh-key add "$key.pub" --type "$1" --title "$(hostname)"; then
+    run gh auth refresh -s "$scopes"
+    run gh ssh-key add "$key.pub" --type "$1" --title "$(hostname)"
+  fi
+}
+register authentication
+register signing
+
+# Local files, never overwritten: identity is edited by hand after this.
+write() {
+  if [ -f "$1" ]; then
+    echo "setup-git: $1 exists, left alone"
+    cat >/dev/null
+  elif [ "${DRY_RUN:-}" ]; then
+    echo "+ write $1"
+    sed 's/^/    /'
+  else
+    cat >"$1"
+  fi
+}
+
+includes=
+old_ifs=$IFS
+IFS=,
+for entry in $GIT_PROFILES; do
+  IFS=$old_ifs
+  entry=$(printf '%s' "$entry" | sed 's/^ *//; s/ *$//')
+  [ -n "$entry" ] || continue
+  dir=${entry%%=*}
+  email=${entry#*=}
+  [ "$dir" != "$entry" ] || die "profile '$entry' is not dir=email"
+  name=$(basename "$dir" | tr '[:upper:]' '[:lower:]')
+  includes="$includes
+[includeIf \"gitdir/i:$dir/\"]
+	path = ~/.gitconfig-$name"
+  printf '[user]\n\tname = %s\n\temail = %s\n' "$GIT_NAME" "$email" | write "$HOME/.gitconfig-$name"
+done
+IFS=$old_ifs
+
+printf '[user]\n\tname = %s\n\temail = %s\n\tsigningkey = %s.pub\n[commit]\n\tgpgsign = true\n%s\n' \
+  "$GIT_NAME" "$GIT_EMAIL" "$key" "$includes" | write "$HOME/.gitconfig-local"
+
+run gh config set git_protocol ssh
+
+# GitHub's published host keys, so the first unattended push never asks.
+known_hosts=$HOME/.ssh/known_hosts
+if ! grep -qs '^github.com ' "$known_hosts"; then
+  if [ "${DRY_RUN:-}" ]; then
+    echo "+ append github.com host keys from gh api meta to $known_hosts"
+  else
+    mkdir -p "$HOME/.ssh"
+    gh api meta --jq '.ssh_keys[]' | sed 's/^/github.com /' >>"$known_hosts"
+  fi
+fi
+
+# Remotes to SSH, only while they are still the HTTPS form of the same repo.
+flip() {
+  [ -d "$1/.git" ] || return 0
+  current=$(git -C "$1" remote get-url origin 2>/dev/null || true)
+  case "$current" in
+    "https://github.com/$2" | "https://github.com/$2.git")
+      run git -C "$1" remote set-url origin "git@github.com:$2.git" ;;
+  esac
+}
+flip "$DOTFILES" iamstuba/dotfiles
+flip "$DOTFILES/.scratch" iamstuba/dotfiles-scratch
+
+echo "setup-git: done"

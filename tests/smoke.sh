@@ -74,7 +74,26 @@ sys.exit(1 if errs else 0)
 PY
 ok "manifest shape"
 
-# 3. The real parser, when a mise exists. On the work laptop this is skipped;
+# 3. Every script in dry-run mode. HOME is a temp directory so nothing on this
+#    machine is read as state.
+tmp_home=$(mktemp -d)
+trap 'rm -rf "$tmp_home"' EXIT
+
+out=$(HOME=$tmp_home sh bin/macos-post-defaults --dry-run) || fail "macos-post-defaults --dry-run"
+echo "$out" | grep -q 'persistent-apps -array' || fail "post-defaults: Dock array write missing"
+echo "$out" | grep -q 'dict-add 64 ' || fail "post-defaults: hotkey 64 missing"
+echo "$out" | grep -q 'dict-add 65 ' || fail "post-defaults: hotkey 65 missing"
+ok "macos-post-defaults --dry-run"
+
+out=$(HOME=$tmp_home GIT_NAME=Test GIT_EMAIL=test@example.com GIT_PROFILES='~/Work=work@example.com' \
+  DOTFILES=$root sh bin/setup-git --dry-run) || fail "setup-git --dry-run"
+echo "$out" | grep -q -- '--type authentication' || fail "setup-git: authentication key registration missing"
+echo "$out" | grep -q -- '--type signing' || fail "setup-git: signing key registration missing"
+echo "$out" | grep -q 'write .*/.gitconfig-local' || fail "setup-git: local gitconfig write missing"
+echo "$out" | grep -q 'write .*/.gitconfig-work' || fail "setup-git: profile file write missing"
+ok "setup-git --dry-run"
+
+# 4. The real parser, when a mise exists. On the work laptop this is skipped;
 #    the rehearsal on the personal Mac is where it runs.
 if command -v mise >/dev/null 2>&1; then
   mise bootstrap --dry-run >/dev/null || fail "mise bootstrap --dry-run"

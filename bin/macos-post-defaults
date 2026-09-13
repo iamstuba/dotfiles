@@ -1,0 +1,55 @@
+#!/bin/sh
+# Post-defaults hook: what mise's typed defaults cannot write (arrays, dicts,
+# -currentHost, sudo, run-time values), then the killalls. Runs every
+# bootstrap on system binaries only. --dry-run or DRY_RUN=1 prints.
+set -eu
+
+case "${1:-}" in --dry-run) DRY_RUN=1 ;; esac
+run() { if [ "${DRY_RUN:-}" ]; then echo "+ $*"; else "$@"; fi; }
+repo=$(cd "$(dirname "$0")/.." && pwd)
+
+# Dock. Emptied every run: nothing is ever pinned.
+run defaults write com.apple.dock persistent-apps -array
+run defaults write com.apple.dock persistent-others -array
+run defaults write com.apple.dock autohide-delay -float 0
+run defaults write com.apple.dock autohide-time-modifier -float 0
+
+# Spotlight. Written whole, so a manual toggle is reset on rerun.
+run defaults write com.apple.Spotlight EnabledPreferenceRules -array "Custom.relatedContents"
+run defaults -currentHost write com.apple.Spotlight MenuItemHidden -bool true
+
+# Spotlight hotkeys off so Vorssaint can take Cmd+Space. Applies at next login.
+hotkey() {
+  run defaults write com.apple.symbolichotkeys AppleSymbolicHotKeys -dict-add "$1" \
+    "<dict><key>enabled</key><false/><key>value</key><dict><key>type</key><string>standard</string><key>parameters</key><array><integer>32</integer><integer>49</integer><integer>$2</integer></array></dict></dict>"
+}
+hotkey 64 1048576
+hotkey 65 1572864
+
+# Apple Intelligence. The key is the Apple Account DSID, so this waits for sign-in.
+dsid=$(/usr/libexec/PlistBuddy -c 'print Accounts:0:AccountDSID' \
+  "$HOME/Library/Preferences/MobileMeAccounts.plist" 2>/dev/null || true)
+if [ -n "$dsid" ]; then
+  run defaults write com.apple.CloudSubscriptionFeatures.optIn "$dsid" -bool false
+else
+  echo "macos-post-defaults: no Apple Account yet, Apple Intelligence key skipped"
+fi
+
+# The five apps removable without touching SIP. The one sudo in bootstrap.
+for app in GarageBand iMovie Pages Numbers Keynote; do
+  if [ -d "/Applications/$app.app" ]; then run rm -rf "/Applications/$app.app"; fi
+done
+for dir in "/Library/Application Support/GarageBand" "/Library/Audio/Apple Loops"; do
+  if [ -d "$dir" ]; then run sudo rm -rf "$dir"; fi
+done
+
+# Wallpaper.
+wallpaper="$repo/assets/wallpaper.jpg"
+if [ -f "$wallpaper" ]; then
+  run osascript -e "tell application \"System Events\" to tell every desktop to set picture to \"$wallpaper\""
+else
+  echo "macos-post-defaults: $wallpaper missing, wallpaper skipped"
+fi
+
+run killall Dock Finder Spotlight usernoted 2>/dev/null || true
+echo "macos-post-defaults: log out for key repeat, Siri and the menu bar; reboot for Apple Intelligence."
