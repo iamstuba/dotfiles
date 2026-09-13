@@ -138,8 +138,9 @@ run = """
   file="{{ config_root }}/home/.agents/AGENTS.md"
   url="https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/unslop/SKILL.md"
   [ -f "$file" ] || { echo "refresh-unslop: $file is missing"; exit 1; }
-  grep -q '<!-- unslop:start -->' "$file" && grep -q '<!-- unslop:end -->' "$file" \
-    || { echo "refresh-unslop: markers missing in $file"; exit 1; }
+  if ! grep -q '<!-- unslop:start -->' "$file" || ! grep -q '<!-- unslop:end -->' "$file"; then
+    echo "refresh-unslop: markers missing in $file"; exit 1
+  fi
   body=$(mktemp)
   curl -fsSL "$url" | awk '
     /^---$/ && fm < 2 { fm++; next }
@@ -153,7 +154,8 @@ run = """
   [ -s "$body" ] || { echo "refresh-unslop: fetch returned nothing, file untouched"; rm -f "$body"; exit 1; }
   {
     awk '{ print } /<!-- unslop:start -->/ { exit }' "$file"
-    echo "<!-- Rules by Lauren Tan, https://github.com/cursor/plugins/tree/main/pstack/skills/unslop, MIT. Rewritten by mise run refresh-unslop; edit upstream, not here. -->"
+    echo "<!-- Rules by Lauren Tan, github.com/cursor/plugins (pstack/skills/unslop), MIT."
+    echo "     Rewritten by mise run refresh-unslop; edit upstream, not here. -->"
     cat "$body"
     awk 'f { print } /<!-- unslop:end -->/ { f = 1; print }' "$file"
   } > "$file.new"

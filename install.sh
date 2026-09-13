@@ -8,17 +8,20 @@
 # DOTFILES_BREW_FALLBACK (read by the pre-packages hook).
 set -eu
 
-case "${1:-}" in --dry-run) DRY_RUN=1 ;; esac
+die() { echo "install: $*" >&2; exit 1; }
+case "${1:-}" in "") ;; --dry-run) DRY_RUN=1 ;; *) die "unknown argument $1" ;; esac
 DOTFILES=${DOTFILES:-$HOME/Projects/iamstuba/dotfiles}
 mise=$HOME/.local/bin/mise
 repo=https://github.com/iamstuba/dotfiles.git
 scratch=git@github.com:iamstuba/dotfiles-scratch.git
 key=$HOME/.ssh/id_ed25519_github
+scopes=admin:public_key,admin:ssh_signing_key
 clt=/Library/Developer/CommandLineTools
 
-if [ -n "${NO_COLOR:-}" ] || [ ! -t 1 ]; then bold=; reset=; else bold=$(printf '\033[1m'); reset=$(printf '\033[0m'); fi
+bold=$(printf '\033[1m')
+reset=$(printf '\033[0m')
+if [ -n "${NO_COLOR:-}" ] || [ ! -t 1 ]; then bold= reset=; fi
 say() { printf '%s==> %s%s\n' "$bold" "$*" "$reset"; }
-die() { echo "install: $*" >&2; exit 1; }
 run() { if [ "${DRY_RUN:-}" ]; then printf '+ %s\n' "$*"; else "$@"; fi; }
 gh() { "$mise" x github-cli -- gh "$@"; }
 ask() {
@@ -46,8 +49,10 @@ fi
 
 # Before the clone and the CLT exist. -p ssh keeps gh out of git's credential
 # config; key upload is setup-git's job.
-if ! gh auth status >/dev/null 2>&1; then
-  run gh auth login -w -p ssh --skip-ssh-key -s admin:public_key,admin:ssh_signing_key
+if [ "${DRY_RUN:-}" ]; then
+  echo "+ gh auth status || gh auth login -w -p ssh --skip-ssh-key -s $scopes"
+elif ! gh auth status >/dev/null 2>&1; then
+  gh auth login -w -p ssh --skip-ssh-key -s "$scopes"
 fi
 
 ask GIT_NAME "Git name"
@@ -70,8 +75,13 @@ if [ -z "${DOTFILES_WORK:-}" ]; then
   case "$answer" in y | Y | yes) DOTFILES_WORK=1 ;; *) DOTFILES_WORK=0 ;; esac
 fi
 miserc=$HOME/.config/mise/miserc.toml
-if [ "$DOTFILES_WORK" = 1 ] && ! grep -qs '"work"' "$miserc"; then
-  if [ "${DRY_RUN:-}" ]; then
+if [ "$DOTFILES_WORK" = 1 ]; then
+  if grep -qs '^env *=.*"work"' "$miserc"; then
+    :
+  elif grep -qs '^env *=' "$miserc"; then
+    # A second env key would be invalid TOML and stop mise loading config.
+    echo "install: $miserc already sets env; add \"work\" to it by hand"
+  elif [ "${DRY_RUN:-}" ]; then
     echo "+ write env = [\"work\"] to $miserc"
   else
     mkdir -p "$HOME/.config/mise"
@@ -97,7 +107,8 @@ if [ ! -e "$clt/usr/bin/git" ]; then
   if [ "${DRY_RUN:-}" ]; then
     label="<label from softwareupdate -l>"
   else
-    label=$(softwareupdate -l 2>/dev/null | sed -n 's/^\* Label: \(Command Line Tools.*\)$/\1/p' | sort -V | tail -n 1 || true)
+    label=$(softwareupdate -l 2>/dev/null \
+      | sed -n 's/^\* Label: \(Command Line Tools.*\)$/\1/p' | sort -V | tail -n 1 || true)
   fi
   if [ -n "$label" ]; then
     run sudo softwareupdate -i "$label"

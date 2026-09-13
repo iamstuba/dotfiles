@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Decode a JWT. From nicknisi/dotfiles at 5387d98.
 # jwt <token> decodes the body; jwt <token> 1 decodes the header.
+set -euo pipefail
+
+[[ -n "${1:-}" ]] || { echo "Usage: jwt <token> [segment]" >&2; exit 1; }
 
 _decode_base64_url() {
   local len=$((${#1} % 4))

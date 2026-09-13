@@ -101,6 +101,11 @@ out=$(HOME=$tmp_home DOTFILES=$root DOTFILES_WORK=0 GIT_NAME=Test GIT_EMAIL=test
 echo "$out" | grep -q 'ssh-keygen' || fail "install: key generation missing"
 echo "$out" | grep -q 'bootstrap --yes' || fail "install: bootstrap command missing"
 echo "$out" | grep -q 'run setup-git' || fail "install: setup-git command missing"
+echo "$out" | grep -q 'env = \["work"\]' && fail "install: wrote the work overlay on a personal answer"
+out=$(HOME=$tmp_home DOTFILES=$root DOTFILES_WORK=1 GIT_NAME=Test GIT_EMAIL=test@example.com GIT_PROFILES= \
+  sh install.sh --dry-run) || fail "install.sh --dry-run (work)"
+echo "$out" | grep -q 'env = \["work"\]' || fail "install: work answer did not write miserc.toml"
+sh install.sh --bogus >/dev/null 2>&1 && fail "install: unknown argument accepted"
 ok "install.sh --dry-run"
 
 # The real parser, when a mise exists. The rehearsal is where this runs.

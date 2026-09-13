@@ -4,7 +4,11 @@
 # bootstrap on system binaries only. --dry-run or DRY_RUN=1 prints.
 set -eu
 
-case "${1:-}" in --dry-run) DRY_RUN=1 ;; esac
+case "${1:-}" in
+  "") ;;
+  --dry-run) DRY_RUN=1 ;;
+  *) echo "macos-post-defaults: unknown argument $1" >&2; exit 1 ;;
+esac
 run() { if [ "${DRY_RUN:-}" ]; then printf '+ %s\n' "$*"; else "$@"; fi; }
 repo=$(cd "$(dirname "$0")/.." && pwd)
 

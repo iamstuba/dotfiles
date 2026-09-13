@@ -3,7 +3,7 @@
 Configuration and setup for my Macs, reproducible from a fresh install. Heavily
 inspired by [nicknisi/dotfiles](https://github.com/nicknisi/dotfiles).
 
-## Install
+## Bootstrap
 
 1. In Setup Assistant: sign in to the Apple Account, decline Apple Intelligence, choose the US keyboard and nothing else, skip Siri.
 2. Open Terminal and run the line below. Stay for the prompts, about two minutes, then leave.
@@ -51,6 +51,12 @@ Anarlog
 Grammarly Desktop
 
 - Open it, sign in, allow Accessibility. Add Ghostty to Settings > Block list.
+
+Handy
+
+- Open it and wait half a minute. If it dies on launch, that is issue 1643 on macOS 26: drop the cask.
+- Allow Microphone and Accessibility. Download the Parakeet V3 model, set language to auto.
+- Add odd identifiers as custom words. Hold Option+Space and dictate one prompt into a Claude Code pane.
 
 Extra GitHub accounts
 

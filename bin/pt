@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Find or kill the process listening on a port. From nicknisi/dotfiles at 5387d98.
 # pt find 3000 prints the PID on stdout, details on stderr. pt kill 3000 kills it.
+set -eu
 
 find_port() {
   local port=$1
   local pid
-  pid=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t | head -n 1)
+  pid=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | head -n 1 || true)
   if [[ -z "$pid" ]]; then
     echo >&2 "No process found listening on port $port"
     exit 0
@@ -23,7 +24,7 @@ find_port() {
 kill_port() {
   local port=$1
   local pid cmd
-  pid=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t | head -n 1)
+  pid=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | head -n 1 || true)
   if [[ -z "$pid" ]]; then
     echo >&2 "No process found listening on port $port"
     exit 0
