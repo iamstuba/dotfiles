@@ -61,6 +61,10 @@ min_version = "2026.8.15"  # last release that changed the dotfiles semantics we
 "~/.config/tuicr/config.toml" = "config/tuicr/config.toml"
 "~/.config/bat/themes/tokyonight_night.tmTheme" = "config/bat/themes/tokyonight_night.tmTheme"
 
+# git. A directory symlink, so config/git/ignore comes along as ~/.config/git/ignore.
+# Identity stays untracked: config/git/config ends by including ~/.gitconfig-local.
+"~/.config/git" = "config/git"
+
 # ---------------------------------------------------------- macos defaults --
 # Vetoed line by line. Arrays, dicts, -currentHost and sudo writes are
 # in bin/macos-post-defaults.

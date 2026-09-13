@@ -1,0 +1,19 @@
+# Global ignore, reached as ~/.config/git/ignore. Patterns that belong to this
+# machine or to an agent, never to one repo. Adding one is a commit here.
+
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+*.swp
+
+# Per-project agent runtime, written into whatever repo the agent runs in.
+**/.claude/settings.local.json
+**/.claude/.cc-writes/
+**/CLAUDE.local.md
+**/AGENTS.local.md
+.pi/
+.pi-subagents/
+.pi-goal/

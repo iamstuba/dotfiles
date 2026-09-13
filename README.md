@@ -83,6 +83,10 @@ If the packages phase dies building SketchyBar or Borders from source, rerun
 the installer with `DOTFILES_BREW_FALLBACK=1`. That installs Homebrew and uses
 it for those two formulae only.
 
+On a Mac set up by hand, move `~/.gitconfig` aside first. Git reads
+`~/.config/git/config`, where this repo's git config is linked, only while that
+file does not exist, and `mise run check` warns when it finds one.
+
 `mise run check` parses the manifest and runs every script dry.
 
 ## Layout

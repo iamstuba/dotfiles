@@ -1,0 +1,76 @@
+# Everything git needs except identity. Name, email, the signing key and the
+# profile includes are in ~/.gitconfig-local, which bin/setup-git writes and the
+# last block here pulls in. A clone with no setup-git run yet still has a working
+# git, just an anonymous one.
+#
+# Reached as ~/.config/git/config, which git reads only while ~/.gitconfig is absent.
+
+[alias]
+	# A gitconfig alias is a pipeline worth calling as `git <word>`. Plain git
+	# invocations stay shell aliases in config/zsh/aliases.zsh.
+	gone = "!git branch -vv | awk '/: gone]/ {print $1}' | xargs -r git branch -d"
+	# browse and churn from nicknisi/dotfiles at 5387d98, bodies verbatim.
+	browse = "!gh repo view --web"
+	# churn was written by Corey Haines and scriptified by Gary Bernhardt.
+	# Takes a range: git churn --since='1 month ago'
+	churn = "!f() { git log --all -M -C --name-only --format='format:' \"$@\" | sort | grep -v '^$' | uniq -c | sort | awk 'BEGIN {print \"count\tfile\"} {print $1 \"\t\" $2}' | sort -g; }; f"
+
+[branch]
+	sort = -committerdate
+
+[commit]
+	verbose = true              # the diff is in the editor while I write the message
+
+[credential "https://github.com"]
+	# Scoped to github.com so it layers over the osxkeychain helper Apple's
+	# Command Line Tools set system-wide. Never run `gh auth setup-git`: it
+	# calls `git config --global`, which on a fresh Mac writes into this file.
+	# setup-git sets gh's protocol to ssh, so this covers hand-pasted URLs only.
+	helper = !gh auth git-credential
+
+[diff]
+	algorithm = histogram
+	renames = copies            # a rename reads as a move, not a delete plus an add
+
+[fetch]
+	prune = true
+
+[gpg]
+	# The signing key is an SSH key, registered by setup-git. Without this line
+	# the commit.gpgsign in ~/.gitconfig-local hands that key to gpg and every
+	# commit dies. The two belong in the same commit.
+	format = ssh
+
+[grep]
+	lineNumber = true
+	extendedRegexp = true       # the regex dialect ripgrep already uses
+
+[help]
+	autocorrect = prompt        # a typo asks before running something else
+
+[init]
+	defaultBranch = main
+
+[merge]
+	conflictStyle = zdiff3      # shows the common ancestor as well as both sides
+
+[pull]
+	ff = only                   # never a merge commit I did not ask for
+
+[push]
+	default = current
+	autoSetupRemote = true      # the first push of a new branch needs no -u
+
+[rebase]
+	autoStash = true
+	updateRefs = true           # stacked branches follow a rebase
+	instructionFormat = "[%an - %ar] %s"
+
+[rerere]
+	enabled = true
+	autoupdate = true
+
+# Last, so the machine's own file wins over everything above. setup-git writes
+# it with the identity, the signing key and the profile includes.
+[include]
+	path = ~/.gitconfig-local

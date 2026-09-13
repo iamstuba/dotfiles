@@ -3,3 +3,8 @@
 
 # Karabiner-Elements writes backups beside the tracked json
 config/karabiner/automatic_backups/
+
+# The global ignore config/git/ignore lays down `.pi/`, which matches at any
+# depth and would hide the pi settings the agents area tracks under home/.
+# The directory has to be un-ignored first; a leaf negation alone does nothing.
+!home/.pi/

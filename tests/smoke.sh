@@ -323,6 +323,130 @@ else
   printf 'skip bat cache --build: bat is not on PATH\n'
 fi
 
+# Git, asked rather than grepped. That config/git/config contains the string
+# `gpg.format` proves only that this commit wrote it. Whether git reads the
+# file through the symlink, whether the include fires and whether the profile
+# pattern matches are the three things that actually break.
+if command -v git >/dev/null 2>&1; then
+  # Physical, because mktemp hands back /var/... and git matches a profile's
+  # gitdir pattern against the resolved /private/var path, so a logical ~ misses.
+  git_home=$(cd "$(mktemp -d)" && pwd -P)
+  mkdir -p "$git_home/.config" "$git_home/Work/repo" "$git_home/Personal/repo"
+  # A directory symlink, exactly as the [dotfiles] row spells it.
+  ln -s "$root/config/git" "$git_home/.config/git"
+
+  # Byte for byte what setup-git writes for GIT_PROFILES='~/Work=work@example.com'.
+  # A fixture that drifts from it proves nothing about the real machine.
+  cat >"$git_home/.gitconfig-local" <<LOCAL
+[user]
+	name = Test Person
+	email = personal@example.com
+	signingkey = $git_home/.ssh/id_ed25519_github.pub
+[commit]
+	gpgsign = true
+
+[includeIf "gitdir/i:~/Work/"]
+	path = ~/.gitconfig-work
+LOCAL
+  printf '[user]\n\temail = work@example.com\n' >"$git_home/.gitconfig-work"
+
+  # GIT_CONFIG_NOSYSTEM keeps Apple's system gitconfig out of every answer.
+  # XDG_CONFIG_HOME is unset for the reason the bat block unsets it: .zshenv
+  # exports it into whoever runs `mise run check`, and leaving it set points
+  # git at the caller's real ~/.config/git instead of this temp one.
+  git_probe() {
+    # cd out of the repo first. The smoke test runs from $root, and a git that
+    # starts there reads this repo's .git/config too, so one `git config --local
+    # user.name` here would answer for the tracked file and pass.
+    (unset XDG_CONFIG_HOME
+     cd "$git_home"
+     HOME=$git_home GIT_CONFIG_NOSYSTEM=1 git "$@")
+  }
+
+  resolved=$(git_probe config --list) || fail "git: config --list failed under the temp HOME"
+  for kv in \
+    'gpg.format=ssh' \
+    'push.default=current' \
+    'push.autosetupremote=true' \
+    'branch.sort=-committerdate' \
+    'commit.verbose=true' \
+    'diff.algorithm=histogram' \
+    'diff.renames=copies' \
+    'fetch.prune=true' \
+    'grep.linenumber=true' \
+    'grep.extendedregexp=true' \
+    'help.autocorrect=prompt' \
+    'init.defaultbranch=main' \
+    'merge.conflictstyle=zdiff3' \
+    'pull.ff=only' \
+    'rebase.autostash=true' \
+    'rebase.updaterefs=true' \
+    'rebase.instructionformat=[%an - %ar] %s' \
+    'rerere.enabled=true' \
+    'rerere.autoupdate=true' \
+    'credential.https://github.com.helper=!gh auth git-credential' \
+    'user.name=Test Person' \
+    'user.email=personal@example.com' \
+    'commit.gpgsign=true'
+  do
+    printf '%s\n' "$resolved" | grep -qxF -- "$kv" || fail "git: $kv did not resolve"
+  done
+
+  # Identity reaching git is half of it; reaching it from the untracked file is
+  # the other half. --show-origin names the file that won.
+  git_probe config --show-origin --get user.name | grep -q '\.gitconfig-local' \
+    || fail "git: user.name does not come from ~/.gitconfig-local"
+  git_probe config --get core.editor >/dev/null 2>&1 \
+    && fail "git: core.editor is set; GIT_EDITOR in .zshenv is the one place the editor is named"
+
+  # Three and no more. Anything that is a plain git invocation is a shell alias.
+  aliases="gone browse churn"
+  for a in $aliases; do
+    git_probe config --get "alias.$a" >/dev/null || fail "git: alias $a is missing"
+  done
+  want=$(printf '%s\n' $aliases | wc -l | tr -d ' ')
+  count=$(printf '%s\n' "$resolved" | grep -c '^alias\.' || true)
+  [ "$count" = "$want" ] || fail "git: $count gitconfig aliases, expected $want"
+
+  # Profiles, inside real repositories. Nothing else exercises the trailing
+  # slash in `gitdir/i:~/Work/`, which is what makes it match subdirectories.
+  git_probe -C "$git_home/Work/repo" init -q || fail "git: init failed in the temp work tree"
+  git_probe -C "$git_home/Personal/repo" init -q || fail "git: init failed in the temp personal tree"
+  email=$(git_probe -C "$git_home/Work/repo" config --get user.email || true)
+  [ "$email" = "work@example.com" ] \
+    || fail "git: the work profile did not match inside ~/Work (got ${email:-nothing})"
+  email=$(git_probe -C "$git_home/Personal/repo" config --get user.email || true)
+  [ "$email" = "personal@example.com" ] \
+    || fail "git: the personal identity did not survive outside ~/Work (got ${email:-nothing})"
+
+  # The row is a directory symlink for one reason: it carries config/git/ignore
+  # to ~/.config/git/ignore, and no other probe here would notice its absence.
+  for pattern in .DS_Store ._resource .Spotlight-V100 .Trashes notes.swp \
+                 CLAUDE.local.md AGENTS.local.md .claude/settings.local.json \
+                 .claude/.cc-writes/log .pi/state .pi-subagents/x .pi-goal/x; do
+    git_probe -C "$git_home/Personal/repo" check-ignore -q "$pattern" \
+      || fail "git: the global ignore does not cover $pattern through the symlink"
+  done
+
+  # The include is the last line of the tracked file so the machine's own file
+  # wins. Nothing tracked overlaps ~/.gitconfig-local today, so the order only
+  # shows itself once something does.
+  printf '[init]\n\tdefaultBranch = trunk\n' >>"$git_home/.gitconfig-local"
+  branch=$(git_probe config --get init.defaultBranch || true)
+  [ "$branch" = trunk ] \
+    || fail "git: ~/.gitconfig-local loses to the tracked config; the include is not last"
+
+  rm -rf "$git_home"
+  # A warning, not a failure: a machine mid-migration is a legal state, and the
+  # fresh Mac this repo targets has no ~/.gitconfig at all.
+  if [ -e "$HOME/.gitconfig" ]; then
+    printf 'warn ~/.gitconfig exists here, so git ignores ~/.config/git/config; move it aside\n'
+  fi
+  ok "git config"
+else
+  printf 'skip git config: git is not on PATH\n'
+fi
+
 # The real parser, when a mise exists. The rehearsal is where this runs.
 if command -v mise >/dev/null 2>&1; then
   mise bootstrap --dry-run >/dev/null || fail "mise bootstrap --dry-run"
