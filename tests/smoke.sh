@@ -205,6 +205,12 @@ echo "$out" | grep -q 'env = \["work"\]' && fail "install: wrote the work overla
 out=$(HOME=$tmp_home DOTFILES=$root DOTFILES_WORK=1 GIT_NAME=Test GIT_EMAIL=test@example.com GIT_PROFILES= \
   sh install.sh --dry-run) || fail "install.sh --dry-run (work)"
 echo "$out" | grep -q 'env = \["work"\]' || fail "install: work answer did not write miserc.toml"
+# The zsh probe below grants the same trust to its own temp HOME, so without
+# this the probe would stay green while a bootstrapped Mac went back to mise
+# warning on every shell start. Only the work answer reaches this far.
+for f in mise.toml config/mise/config.toml config/mise/config.work.toml; do
+  echo "$out" | grep -q "mise trust $root/$f" || fail "install: no mise trust for $f"
+done
 sh install.sh --bogus >/dev/null 2>&1 && fail "install: unknown argument accepted"
 ok "install.sh --dry-run"
 
@@ -220,6 +226,28 @@ if command -v zsh >/dev/null 2>&1; then
   ln -s "$root/home/.zshenv" "$zsh_home/.zshenv"
   ln -s "$root/config/zsh" "$zsh_home/.config/zsh"
 
+  # And what bootstrap trusts. .zshrc activates mise, the suite runs from the
+  # repo root, and an untrusted config there costs three stderr lines that the
+  # rule below fails on: the named trust warning, plus one `migrate: error
+  # parsing config file` per mise invocation, which is the same cause and not
+  # a second one. install.sh runs mise trust against the real HOME, so granting
+  # it here is the probe matching a bootstrapped Mac rather than filtering mise
+  # out of the stderr rule.
+  #
+  # Trust is the one thing this probe writes, and MISE_STATE_DIR outranks both
+  # HOME and an inherited XDG_STATE_HOME, so it is pinned into the temp HOME
+  # rather than left to whoever ran `mise run check`.
+  mise_state=$zsh_home/.local/state/mise
+  if command -v mise >/dev/null 2>&1; then
+    # Recorded per directory and it does not cascade, so this covers the repo
+    # root and nothing under it. install.sh names the two configs in
+    # config/mise as well; this HOME links neither, so the probe never loads
+    # them. Captured because mise reports success on stderr too.
+    trust_out=$(HOME=$zsh_home MISE_STATE_DIR=$mise_state \
+      mise trust "$root/mise.toml" 2>&1) \
+      || fail "mise trust failed against the probe's HOME: $trust_out"
+  fi
+
   # ZDOTDIR points into tracked space, so a shell that writes under it dirties
   # the working tree. Compared before against after rather than required
   # empty, so the check still means something with work in progress.
@@ -228,9 +256,11 @@ if command -v zsh >/dev/null 2>&1; then
   # ZDOTDIR is unset for the probe. A shell inherits it from whoever runs
   # `mise run check`, and zsh reads $ZDOTDIR/.zshenv in preference to
   # $HOME/.zshenv, so leaving it set tests the caller's install, not this one.
+  # MISE_STATE_DIR is pinned for the same reason: the mise this shell activates
+  # has to read the trust granted above and not the caller's.
   # The output is cut into labelled sections, so an alias cannot satisfy an
   # assertion meant for a key binding.
-  out=$(unset ZDOTDIR; HOME=$zsh_home zsh -i -c '
+  out=$(unset ZDOTDIR; HOME=$zsh_home MISE_STATE_DIR=$mise_state zsh -i -c '
     echo "### env";       printenv
     echo "### histfile";  echo "HISTFILE=$HISTFILE"
     # Physical, because ZDOTDIR reaches the repo through a symlink and the
