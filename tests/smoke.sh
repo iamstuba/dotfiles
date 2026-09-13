@@ -522,6 +522,54 @@ else
   printf 'skip git config: git is not on PATH\n'
 fi
 
+# lazygit, parsed rather than run. It has no flag that dumps the config it
+# resolved, only its defaults, and it wants a terminal. So the file is read the
+# way the eza theme is, under the same python3 yaml guard, with the same
+# existence check in front of it: on a Mac whose python3 is the CLT's 3.9 the
+# manifest block skips too, and nothing else would notice the file was gone.
+[ -f config/lazygit/config.yml ] || fail "lazygit: config/lazygit/config.yml is missing"
+if python3 -c 'import yaml' 2>/dev/null; then
+python3 - <<'LAZYGIT' || fail "lazygit config"
+import sys, yaml
+
+with open("config/lazygit/config.yml") as f:
+    cfg = yaml.safe_load(f)
+errs = []
+missing = object()
+
+def resolve(path):
+    node = cfg
+    for key in path.split("."):
+        if not isinstance(node, dict) or key not in node:
+            return missing
+        node = node[key]
+    return node
+
+want = {
+    "os.editPreset": "nvim-remote",
+    "gui.nerdFontsVersion": "3",
+    "disableStartupPopups": True,
+    "git.paging.colorArg": "always",
+    "git.paging.pager": "delta --dark --paging=never",
+    # One colour. It fails when the theme block is absent, truncated or recoloured.
+    "gui.theme.activeBorderColor": ["#ff9e64", "bold"],
+}
+for path, expected in want.items():
+    got = resolve(path)
+    if got is missing:
+        errs.append(f"lazygit: {path} is missing")
+    elif got != expected:
+        errs.append(f"lazygit: {path} is {got!r}, expected {expected!r}")
+
+for e in errs:
+    print("  " + e, file=sys.stderr)
+sys.exit(1 if errs else 0)
+LAZYGIT
+ok "lazygit config"
+else
+  printf 'skip lazygit config: python3 has no yaml module\n'
+fi
+
 # The real parser, when a mise exists. The rehearsal is where this runs.
 if command -v mise >/dev/null 2>&1; then
   mise bootstrap --dry-run >/dev/null || fail "mise bootstrap --dry-run"

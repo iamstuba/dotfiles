@@ -1,0 +1,44 @@
+# lazygit. Four keys and a palette, nothing else: upstream's Config.md dumps
+# every default and says not to copy it whole.
+
+# nvim-remote reads $NVIM, so `e` edits in the Neovim lazygit was opened from
+# instead of starting a second one.
+os:
+  editPreset: nvim-remote
+
+disableStartupPopups: true
+
+git:
+  paging:
+    colorArg: always
+    pager: delta --dark --paging=never
+
+gui:
+  # Quoted. A bare 3 parses as an int and lazygit draws boxes instead of icons.
+  nerdFontsVersion: "3"
+  # Verbatim from folke/tokyonight.nvim, extras/lazygit/tokyonight_night.yml
+  theme:
+    activeBorderColor:
+      - "#ff9e64"
+      - "bold"
+    inactiveBorderColor:
+      - "#27a1b9"
+    searchingActiveBorderColor:
+      - "#ff9e64"
+      - "bold"
+    optionsTextColor:
+      - "#7aa2f7"
+    selectedLineBgColor:
+      - "#283457"
+    cherryPickedCommitFgColor:
+      - "#7aa2f7"
+    cherryPickedCommitBgColor:
+      - "#bb9af7"
+    markedBaseCommitFgColor:
+      - "#7aa2f7"
+    markedBaseCommitBgColor:
+      - "#e0af68"
+    unstagedChangesColor:
+      - "#db4b4b"
+    defaultFgColor:
+      - "#c0caf5"
