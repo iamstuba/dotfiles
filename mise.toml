@@ -17,15 +17,17 @@ min_version = "2026.8.15"  # last release that changed the dotfiles semantics we
 "brew:zsh-autosuggestions" = "latest"
 "brew:zsh-syntax-highlighting" = "latest"
 "brew:fzf-tab" = "latest"
-# Source builds, no bottles. If they fail unattended, rerun with DOTFILES_BREW_FALLBACK=1.
-"brew:FelixKratz/formulae/sketchybar" = "latest"
-"brew:FelixKratz/formulae/borders" = "latest"
+# Nothing from a third-party tap belongs in this table, formula or cask. mise
+# resolves a tap through its published api/ JSON, which a tap is not required
+# to carry and neither FelixKratz/formulae nor nikitabobko/tap does, and its
+# fallback evaluates the .rb, which wants Ruby 3 or newer against the 2.6 macOS
+# ships. sketchybar, borders and aerospace live in bin/brew-tap-packages, which
+# the pre-packages hook runs.
 
 "brew-cask:ghostty" = "latest"
 "brew-cask:zen" = "latest"
 "brew-cask:proton-pass" = "latest"
 "brew-cask:slack" = "latest"                              # personal use too, so not the overlay
-"brew-cask:nikitabobko/tap/aerospace" = "latest"
 "brew-cask:karabiner-elements" = "latest"
 "brew-cask:thunderbird" = "latest"
 "brew-cask:proton-mail-bridge" = "latest"
@@ -112,16 +114,11 @@ NSGlobalDomain."com.apple.mouse.scaling" = 1.0              # seeded from a trac
 # [tasks.bootstrap].
 
 [bootstrap.hooks.pre-packages]
-# Off by default. mise counts brew-installed formulae as installed, so its own
-# packages phase passes afterwards.
-run = """
-  [ "${DOTFILES_BREW_FALLBACK:-0}" = "1" ] || exit 0
-  [ -x /opt/homebrew/bin/sketchybar ] && exit 0
-  if [ ! -x /opt/homebrew/bin/brew ]; then
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-  fi
-  /opt/homebrew/bin/brew install FelixKratz/formulae/sketchybar FelixKratz/formulae/borders
-"""
+# The only path to everything in a third-party tap; see the note in
+# [bootstrap.packages]. Always on, so it can no longer be a fallback nobody
+# remembers to set. The script names those packages, and update:apps upgrades
+# the same list through it.
+run = "{{ config_root }}/bin/brew-tap-packages install"  # absolute: a bare path would follow the caller's cwd
 
 [bootstrap.hooks.post-defaults]
 run = "{{ config_root }}/bin/macos-post-defaults"  # a bare relative path would depend on the caller's cwd

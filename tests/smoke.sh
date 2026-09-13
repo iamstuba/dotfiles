@@ -92,6 +92,32 @@ hooks = set(root["bootstrap"].get("hooks", {}))
 if hooks != {"pre-packages", "post-defaults", "final"}:
     errs.append(f"hooks are {sorted(hooks)}")
 
+# mise resolves a brew package through its tap's published api/ JSON and, when
+# that 404s, by evaluating the .rb, which wants Ruby 3 or newer against the 2.6
+# macOS ships. A tap is not required to publish that JSON and neither of the
+# two this repo uses does, so a tap entry here fails the packages phase
+# outright, on a real run as much as a dry one. Measured both ways:
+# brew:FelixKratz/formulae/sketchybar and brew-cask:nikitabobko/tap/aerospace
+# fail identically, so casks are no exception and the rule covers both
+# prefixes. It is deliberately broader than the measurement: a tap that does
+# publish api/ JSON would resolve, and this still rejects it. Lift the rule
+# when such a tap is actually wanted, rather than leaving the door open now.
+for key in root["bootstrap"].get("packages", {}):
+    backend, _, name = key.partition(":")
+    if backend in ("brew", "brew-cask") and "/" in name:
+        errs.append(f"{key} names a third-party tap, which mise cannot resolve. "
+                    "Install it from bin/brew-tap-packages instead")
+
+# bin/brew-tap-packages is the only path to those packages, and the same
+# script upgrades them, so the hook must still reach it. mise also accepts a
+# bare string or an array here; this hook is a table with one `run` line and
+# the assertion reads it as one, so a change of form fails loudly rather than
+# matching nothing.
+pre_run = root["bootstrap"]["hooks"]["pre-packages"]["run"]
+if "bin/brew-tap-packages install" not in pre_run:
+    errs.append("pre-packages hook no longer installs the tap packages, and "
+                "[bootstrap.packages] cannot carry them")
+
 age = global_cfg.get("settings", {}).get("minimum_release_age")
 if not isinstance(age, str):
     errs.append(f"minimum_release_age must be a duration string, got {age!r}")
@@ -139,6 +165,28 @@ echo "$out" | grep -q 'persistent-apps -array' || fail "post-defaults: Dock arra
 echo "$out" | grep -q 'dict-add 64 ' || fail "post-defaults: hotkey 64 missing"
 echo "$out" | grep -q 'dict-add 65 ' || fail "post-defaults: hotkey 65 missing"
 ok "macos-post-defaults --dry-run"
+
+# The tap packages, which mise cannot resolve and so never appears in the
+# bootstrap plan beyond the hook line that calls this. This script is the only
+# place they are named, and both the hook and update:apps go through it, so the
+# two actions are asserted separately.
+out=$(HOME=$tmp_home sh bin/brew-tap-packages install --dry-run) || fail "brew-tap-packages install --dry-run"
+for tapped in FelixKratz/formulae/sketchybar FelixKratz/formulae/borders; do
+  echo "$out" | grep -q "brew install .*$tapped" || fail "brew-tap-packages: install misses $tapped"
+done
+echo "$out" | grep -q 'brew install --cask .*nikitabobko/tap/aerospace' \
+  || fail "brew-tap-packages: install misses nikitabobko/tap/aerospace"
+out=$(HOME=$tmp_home sh bin/brew-tap-packages upgrade --dry-run) || fail "brew-tap-packages upgrade --dry-run"
+# Separately asserted because `brew upgrade`, unlike `brew install`, will not
+# tap on demand, so an upgrade that lost its formulae fails silently on a
+# machine where the tap is present anyway.
+echo "$out" | grep -q 'brew upgrade .*FelixKratz/formulae/borders' \
+  || fail "brew-tap-packages: upgrade misses the formulae"
+echo "$out" | grep -q 'brew upgrade --cask .*nikitabobko/tap/aerospace' \
+  || fail "brew-tap-packages: upgrade misses the cask"
+sh bin/brew-tap-packages >/dev/null 2>&1 && fail "brew-tap-packages: missing action accepted"
+sh bin/brew-tap-packages install --bogus >/dev/null 2>&1 && fail "brew-tap-packages: unknown argument accepted"
+ok "brew-tap-packages --dry-run"
 
 out=$(HOME=$tmp_home GIT_NAME=Test GIT_EMAIL=test@example.com GIT_PROFILES='~/Work=work@example.com' \
   DOTFILES=$root sh bin/setup-git --dry-run) || fail "setup-git --dry-run"
@@ -612,7 +660,9 @@ probe_yaml "lazygit config" config/lazygit/config.yml '{
   "gui.theme.activeBorderColor": ["#ff9e64", "bold"]
 }'
 
-# The real parser, when a mise exists. The rehearsal is where this runs.
+# The real parser, when a mise exists. This block went red on every Mac with
+# mise on it until the three tap entries left [bootstrap.packages]; see the
+# note there. It has no value as a pass/fail gate unless it can reach one.
 if command -v mise >/dev/null 2>&1; then
   mise bootstrap --dry-run >/dev/null || fail "mise bootstrap --dry-run"
   ok "mise bootstrap --dry-run"

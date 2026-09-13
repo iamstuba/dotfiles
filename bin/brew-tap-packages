@@ -1,0 +1,56 @@
+#!/bin/sh
+# Everything this repo installs from a third-party Homebrew tap, named once.
+# mise cannot resolve these: it reads a tap's published api/ JSON, which
+# neither tap carries, and its fallback evaluates the .rb with a Ruby 3 no Mac
+# ships. So they are absent from [bootstrap.packages] and live here instead,
+# called by the pre-packages hook to install and by update:apps to upgrade.
+# Runs on system binaries only. --dry-run or DRY_RUN=1 prints.
+set -eu
+
+action=${1:-}
+case "$action" in
+  install|upgrade) ;;
+  *) echo "brew-tap-packages: expected install or upgrade, got '${action}'" >&2; exit 1 ;;
+esac
+case "${2:-}" in
+  "") ;;
+  --dry-run) DRY_RUN=1 ;;
+  *) echo "brew-tap-packages: unknown argument $2" >&2; exit 1 ;;
+esac
+run() { if [ "${DRY_RUN:-}" ]; then printf '+ %s\n' "$*"; else "$@"; fi; }
+
+brew=/opt/homebrew/bin/brew
+# Source builds, no bottles, so these two are the slow part of a fresh Mac.
+formulae="FelixKratz/formulae/sketchybar FelixKratz/formulae/borders"
+casks="nikitabobko/tap/aerospace"
+
+if [ "$action" = install ]; then
+  # Every binary already in place, so nothing to fetch. The cask honours
+  # HOMEBREW_CASK_OPTS --appdir, so look where a user-scoped install lands too.
+  # A dry run reports the decision and keeps going rather than stopping here:
+  # the commands are the point of printing, and on a machine that has already
+  # bootstrapped an early exit would print nothing at all.
+  if [ -x /opt/homebrew/bin/sketchybar ] && [ -x /opt/homebrew/bin/borders ] &&
+     { [ -d /Applications/AeroSpace.app ] || [ -d "$HOME/Applications/AeroSpace.app" ]; }; then
+    if [ -z "${DRY_RUN:-}" ]; then
+      exit 0
+    fi
+    printf '+ (all present; a real run would stop here)\n'
+  fi
+  if [ ! -x "$brew" ]; then
+    run /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  fi
+  # No `brew tap` and no `brew trust`. Measured on Homebrew 7: `brew install`
+  # against a fully qualified name taps and trusts on its own, with no prompt
+  # even on a terminal. `brew upgrade` does neither, which is why it is only
+  # ever reached below, after an install has tapped.
+  # shellcheck disable=SC2086  # both lists are deliberately word-split
+  run "$brew" install $formulae
+  # shellcheck disable=SC2086
+  run "$brew" install --cask $casks
+else
+  # shellcheck disable=SC2086
+  run "$brew" upgrade $formulae
+  # shellcheck disable=SC2086
+  run "$brew" upgrade --cask $casks
+fi

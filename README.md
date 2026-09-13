@@ -64,8 +64,9 @@ mise run update:all
 
 Runs, in order: `update:dotfiles` (fast-forward this repo when on main), `update:tools`
 (mise, every tool, pi extensions), `update:apps` (formulae and casks), `update:plugins`
-(Neovim). Run `mise upgrade --dry-run` and `mise bootstrap packages upgrade --dry-run`
-first on a new machine.
+(Neovim). Run `mise upgrade --dry-run`, `mise bootstrap packages upgrade --dry-run`
+and `bin/brew-tap-packages upgrade --dry-run` first on a new machine. The third
+covers what the second cannot see; see "Rerunning" below.
 
 What no task can do:
 
@@ -79,9 +80,13 @@ What no task can do:
 Account sign-in was skipped in Setup Assistant, sign in and rerun it so the
 Apple Intelligence key gets written.
 
-If the packages phase dies building SketchyBar or Borders from source, rerun
-the installer with `DOTFILES_BREW_FALLBACK=1`. That installs Homebrew and uses
-it for those two formulae only.
+SketchyBar, Borders and AeroSpace come from Homebrew, not from the packages
+phase. They live in third-party taps that publish no API metadata, and mise's
+fallback for that wants Ruby 3 or newer where macOS ships 2.6, so it cannot
+resolve them at all. `bin/brew-tap-packages` names them and does the brew work;
+the pre-packages hook calls it to install and `update:apps` to upgrade.
+SketchyBar and Borders build from source, which is the slow part of a fresh
+Mac.
 
 On a Mac set up by hand, move `~/.gitconfig` aside first. Git reads
 `~/.config/git/config`, where this repo's git config is linked, only while that

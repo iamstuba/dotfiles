@@ -85,7 +85,7 @@ The unit implementation runs in, one at a time: the files owned by a single tool
 _Avoid_: feature, epic, milestone
 
 **Rehearsal**:
-`mise bootstrap --dry-run` on the personal machine before the first real bootstrap. Prints hooks, never builds, so source builds and the post-defaults hook stay untested until the real run.
+`mise bootstrap --dry-run` on the personal machine before the first real bootstrap. Prints hook bodies without running them, so everything the pre-packages hook installs and the post-defaults hook stay untested until the real run.
 _Avoid_: trial, test run
 
 **Smoke test**:

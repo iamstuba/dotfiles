@@ -4,8 +4,7 @@
 # From the clone: sh install.sh. A few attended minutes, then unattended until
 # "Restart now". Rerunnable: what exists is skipped, nothing is pulled.
 # --dry-run prints every mutating command.
-# Environment: DOTFILES, DOTFILES_WORK, GIT_NAME, GIT_EMAIL, GIT_PROFILES,
-# DOTFILES_BREW_FALLBACK (read by the pre-packages hook).
+# Environment: DOTFILES, DOTFILES_WORK, GIT_NAME, GIT_EMAIL, GIT_PROFILES.
 set -eu
 
 die() { echo "install: $*" >&2; exit 1; }

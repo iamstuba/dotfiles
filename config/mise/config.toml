@@ -56,8 +56,16 @@ run = """
 """
 
 [tasks."update:apps"]
-description = "Update Homebrew formulae and casks poured by mise."
-run = "mise bootstrap packages upgrade --yes"
+description = "Update Homebrew formulae and casks, both those mise pours and those it cannot resolve."
+run = """
+  mise bootstrap packages upgrade --yes
+  # The tap packages are absent from [bootstrap.packages], so the line above
+  # cannot see them and nothing else upgrades them. The repo is resolved the
+  # way update:dotfiles resolves it: this is the global file, so {{ config_root }}
+  # here would be ~/.config/mise.
+  repo="${DOTFILES:-$HOME/Projects/iamstuba/dotfiles}"
+  sh "$repo/bin/brew-tap-packages" upgrade
+"""
 
 [tasks."update:plugins"]
 description = "Update Neovim plugins and write the lockfile."
