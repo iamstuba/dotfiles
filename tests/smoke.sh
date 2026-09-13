@@ -293,6 +293,36 @@ else
   printf 'skip interactive zsh: zsh is not on PATH\n'
 fi
 
+# `bat cache --build` is in the bootstrap task, and a theme that fails to load
+# falls back silently, so the name resolving is not proof. The bootstrap task
+# runs from mise without XDG_CONFIG_HOME exported, and bat defaults to
+# ~/.config/bat on macOS, so both are covered here.
+if command -v bat >/dev/null 2>&1; then
+  bat_home=$(mktemp -d)
+  mkdir -p "$bat_home/.config/bat/themes"
+  # File-level, exactly as the [dotfiles] row spells it.
+  ln -s "$root/config/bat/themes/tokyonight_night.tmTheme" \
+        "$bat_home/.config/bat/themes/tokyonight_night.tmTheme"
+  # XDG_CONFIG_HOME and XDG_CACHE_HOME are unset for these three runs. They are
+  # inherited from whoever calls `mise run check`, and .zshenv exports the
+  # first, so leaving them set points bat at the caller's real ~/.config/bat.
+  # Unset is also the case the bootstrap task actually runs in.
+  (unset XDG_CONFIG_HOME XDG_CACHE_HOME
+   HOME=$bat_home bat cache --build >/dev/null 2>&1) || fail "bat cache --build"
+  (unset XDG_CONFIG_HOME XDG_CACHE_HOME
+   HOME=$bat_home bat --list-themes 2>/dev/null) | grep -qx 'tokyonight_night' \
+    || fail "bat: the theme does not resolve through the symlink"
+  # #c0caf5 is the theme's foreground. A silent fallback paints something else.
+  (unset XDG_CONFIG_HOME XDG_CACHE_HOME
+   HOME=$bat_home BAT_THEME=tokyonight_night bat --color=always --style=plain \
+     "$root/config/ripgrep/config" 2>/dev/null) | grep -q '38;2;192;202;245' \
+    || fail "bat: rendered colours do not come from the tracked theme"
+  rm -rf "$bat_home"
+  ok "bat cache --build"
+else
+  printf 'skip bat cache --build: bat is not on PATH\n'
+fi
+
 # The real parser, when a mise exists. The rehearsal is where this runs.
 if command -v mise >/dev/null 2>&1; then
   mise bootstrap --dry-run >/dev/null || fail "mise bootstrap --dry-run"
