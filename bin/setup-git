@@ -5,7 +5,7 @@
 set -eu
 
 case "${1:-}" in --dry-run) DRY_RUN=1 ;; esac
-run() { if [ "${DRY_RUN:-}" ]; then echo "+ $*"; else "$@"; fi; }
+run() { if [ "${DRY_RUN:-}" ]; then printf '+ %s\n' "$*"; else "$@"; fi; }
 die() { echo "setup-git: $*" >&2; exit 1; }
 
 DOTFILES=${DOTFILES:-$HOME/Projects/iamstuba/dotfiles}
@@ -49,10 +49,16 @@ register() {
   if [ -n "$pub" ] && [ -z "${DRY_RUN:-}" ] && gh ssh-key list 2>/dev/null | grep -F "$pub" | grep -q "$1"; then
     return 0
   fi
-  if ! run gh ssh-key add "$key.pub" --type "$1" --title "$(hostname)"; then
-    run gh auth refresh -s "$scopes"
-    run gh ssh-key add "$key.pub" --type "$1" --title "$(hostname)"
+  # Only a scope refusal earns a refresh and retry; anything else is fatal.
+  if ! out=$(run gh ssh-key add "$key.pub" --type "$1" --title "$(hostname)" 2>&1); then
+    case "$out" in
+      *scope* | *admin:*)
+        run gh auth refresh -s "$scopes"
+        run gh ssh-key add "$key.pub" --type "$1" --title "$(hostname)" ;;
+      *) die "$out" ;;
+    esac
   fi
+  [ -z "$out" ] || printf '%s\n' "$out"
 }
 register authentication
 register signing
@@ -84,7 +90,7 @@ for entry in $GIT_PROFILES; do
   includes="$includes
 [includeIf \"gitdir/i:$dir/\"]
 	path = ~/.gitconfig-$name"
-  printf '[user]\n\tname = %s\n\temail = %s\n' "$GIT_NAME" "$email" | write "$HOME/.gitconfig-$name"
+  printf '[user]\n\temail = %s\n' "$email" | write "$HOME/.gitconfig-$name"
 done
 IFS=$old_ifs
 

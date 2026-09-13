@@ -5,7 +5,7 @@
 set -eu
 
 case "${1:-}" in --dry-run) DRY_RUN=1 ;; esac
-run() { if [ "${DRY_RUN:-}" ]; then echo "+ $*"; else "$@"; fi; }
+run() { if [ "${DRY_RUN:-}" ]; then printf '+ %s\n' "$*"; else "$@"; fi; }
 repo=$(cd "$(dirname "$0")/.." && pwd)
 
 # Dock. Emptied every run: nothing is ever pinned.
@@ -35,7 +35,8 @@ else
   echo "macos-post-defaults: no Apple Account yet, Apple Intelligence key skipped"
 fi
 
-# The five apps removable without touching SIP. The one sudo in bootstrap.
+# The five apps removable without touching SIP. GarageBand's loops are
+# root-owned, so those two need sudo; nothing else in bootstrap does.
 for app in GarageBand iMovie Pages Numbers Keynote; do
   if [ -d "/Applications/$app.app" ]; then run rm -rf "/Applications/$app.app"; fi
 done
@@ -43,7 +44,6 @@ for dir in "/Library/Application Support/GarageBand" "/Library/Audio/Apple Loops
   if [ -d "$dir" ]; then run sudo rm -rf "$dir"; fi
 done
 
-# Wallpaper.
 wallpaper="$repo/assets/wallpaper.jpg"
 if [ -f "$wallpaper" ]; then
   run osascript -e "tell application \"System Events\" to tell every desktop to set picture to \"$wallpaper\""

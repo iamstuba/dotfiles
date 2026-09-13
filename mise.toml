@@ -85,7 +85,7 @@ NSGlobalDomain.NSWindowShouldDragOnGesture = true
 NSGlobalDomain._HIHideMenuBar = true
 NSGlobalDomain.AppleMenuBarVisibleInFullscreen = false
 "com.apple.controlcenter".AutoHideMenuBarOption = 0
-NSGlobalDomain."com.apple.mouse.scaling" = 1.0              # seeded from the work laptop, corrected in the settings pass
+NSGlobalDomain."com.apple.mouse.scaling" = 1.0              # seeded from a trackpad, corrected for the mouse in the settings pass
 
 # ------------------------------------------------------------------- hooks --
 # Hooks run on system binaries only; anything needing a manifest tool is in
@@ -134,6 +134,7 @@ description = "Refetch the unslop rules into the marked block of home/.agents/AG
 # Source is Lauren Tan's pstack plugin, MIT. Frontmatter, title and the
 # Process section are stripped; the rules are the payload.
 run = """
+  set -eu
   file="{{ config_root }}/home/.agents/AGENTS.md"
   url="https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/unslop/SKILL.md"
   [ -f "$file" ] || { echo "refresh-unslop: $file is missing"; exit 1; }
@@ -148,6 +149,8 @@ run = """
     /^## / { skip = 0 }
     !skip { print }
   ' > "$body"
+  # A failed fetch must not replace the block with nothing.
+  [ -s "$body" ] || { echo "refresh-unslop: fetch returned nothing, file untouched"; rm -f "$body"; exit 1; }
   {
     awk '{ print } /<!-- unslop:start -->/ { exit }' "$file"
     echo "<!-- Rules by Lauren Tan, https://github.com/cursor/plugins/tree/main/pstack/skills/unslop, MIT. Rewritten by mise run refresh-unslop; edit upstream, not here. -->"

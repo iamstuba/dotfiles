@@ -12,14 +12,14 @@ case "${1:-}" in --dry-run) DRY_RUN=1 ;; esac
 DOTFILES=${DOTFILES:-$HOME/Projects/iamstuba/dotfiles}
 mise=$HOME/.local/bin/mise
 repo=https://github.com/iamstuba/dotfiles.git
-scratch=https://github.com/iamstuba/dotfiles-scratch.git
+scratch=git@github.com:iamstuba/dotfiles-scratch.git
 key=$HOME/.ssh/id_ed25519_github
 clt=/Library/Developer/CommandLineTools
 
 if [ -n "${NO_COLOR:-}" ] || [ ! -t 1 ]; then bold=; reset=; else bold=$(printf '\033[1m'); reset=$(printf '\033[0m'); fi
 say() { printf '%s==> %s%s\n' "$bold" "$*" "$reset"; }
 die() { echo "install: $*" >&2; exit 1; }
-run() { if [ "${DRY_RUN:-}" ]; then echo "+ $*"; else "$@"; fi; }
+run() { if [ "${DRY_RUN:-}" ]; then printf '+ %s\n' "$*"; else "$@"; fi; }
 gh() { "$mise" x github-cli -- gh "$@"; }
 ask() {
   eval "val=\${$1:-}"
@@ -36,7 +36,7 @@ say "Attended phase: a few prompts, then you can leave."
 # One password covers the CLT, /opt/homebrew and the GarageBand deletion.
 run sudo -v
 if [ -z "${DRY_RUN:-}" ]; then
-  while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
+  while kill -0 "$$" 2>/dev/null; do sudo -n true 2>/dev/null || true; sleep 60; done &
 fi
 
 # Never reinstalled: mise.run would replace a self-updated binary with its pinned one.
@@ -52,17 +52,20 @@ fi
 
 ask GIT_NAME "Git name"
 ask GIT_EMAIL "Git email"
+# Profiles are optional, so no terminal means none.
 if [ -z "${GIT_PROFILES+set}" ]; then
-  [ -t 0 ] || die "GIT_PROFILES is unset and there is no terminal to ask"
-  printf 'Git profiles as dir=email, comma separated, or empty: '
-  read -r GIT_PROFILES
+  GIT_PROFILES=
+  if [ -t 0 ]; then
+    printf 'Git profiles as dir=email, comma separated, or empty: '
+    read -r GIT_PROFILES
+  fi
 fi
 export GIT_NAME GIT_EMAIL GIT_PROFILES
 
 # MISE_ENV lives in mise's early-init file, never in a shell rc.
 if [ -z "${DOTFILES_WORK:-}" ]; then
   [ -t 0 ] || die "DOTFILES_WORK is unset and there is no terminal to ask"
-  printf 'Is this a work machine? [y/N] '
+  printf 'Is this a work Mac (loads the work overlay)? [y/N] '
   read -r answer
   case "$answer" in y | Y | yes) DOTFILES_WORK=1 ;; *) DOTFILES_WORK=0 ;; esac
 fi
@@ -120,13 +123,14 @@ for f in mise.toml config/mise/config.toml config/mise/config.work.toml; do
 done
 run "$mise" -C "$DOTFILES" bootstrap --yes
 
-# Owner-only, so a failure is a note. GIT_TERMINAL_PROMPT=0 keeps git from asking for a password.
+run "$mise" -C "$DOTFILES" run setup-git
+
+# After setup-git: the key is registered and GitHub's host keys are trusted.
+# Owner-only, so a failure is a note. BatchMode stops ssh from asking anything.
 if [ ! -d "$DOTFILES/.scratch/.git" ]; then
-  if ! run env GIT_TERMINAL_PROMPT=0 "$mise" x github-cli -- git clone "$scratch" "$DOTFILES/.scratch"; then
+  if ! run env GIT_SSH_COMMAND="ssh -o BatchMode=yes" git clone "$scratch" "$DOTFILES/.scratch"; then
     echo "install: could not clone dotfiles-scratch (owner-only), continuing"
   fi
 fi
-
-run "$mise" -C "$DOTFILES" run setup-git
 
 say "Done. Restart now, then follow \"After the restart\" in the README."

@@ -5,7 +5,7 @@
 find_port() {
   local port=$1
   local pid
-  pid=$(lsof -i -P -n | grep LISTEN | grep ":$port" | awk '{print $2}')
+  pid=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t | head -n 1)
   if [[ -z "$pid" ]]; then
     echo >&2 "No process found listening on port $port"
     exit 0
@@ -23,7 +23,7 @@ find_port() {
 kill_port() {
   local port=$1
   local pid cmd
-  pid=$(lsof -i -P -n | grep LISTEN | grep ":$port" | awk '{print $2}')
+  pid=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t | head -n 1)
   if [[ -z "$pid" ]]; then
     echo >&2 "No process found listening on port $port"
     exit 0

@@ -1,6 +1,6 @@
 #!/bin/sh
-# Smoke test for the manifest and installer area. Parses the manifest and
-# runs every script in dry-run mode. Extended by each area, never split.
+# Smoke test: parses the manifest and runs every script dry. One file,
+# extended by each area, so `mise run check` stays one command.
 set -eu
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -9,7 +9,6 @@ cd "$root"
 fail() { printf 'FAIL %s\n' "$*" >&2; exit 1; }
 ok() { printf 'ok   %s\n' "$*"; }
 
-# 1. Every script parses.
 for f in install.sh tests/smoke.sh bin/*; do
   [ -f "$f" ] || continue
   case "$(head -n 1 "$f")" in
@@ -19,7 +18,9 @@ for f in install.sh tests/smoke.sh bin/*; do
 done
 ok "syntax"
 
-# 2. The manifest has the shape the loader expects.
+# tomllib needs Python 3.11; the CLT ships 3.9, so a fresh Mac skips this and
+# relies on the mise dry-run below.
+if python3 -c 'import tomllib' 2>/dev/null; then
 python3 - <<'PY' || fail "manifest shape"
 import sys, tomllib, pathlib
 
@@ -28,13 +29,13 @@ def load(p):
         return tomllib.load(f)
 
 root = load("mise.toml")
-glob = load("config/mise/config.toml")
+global_cfg = load("config/mise/config.toml")
 work = load("config/mise/config.work.toml")
 errs = []
 
-if "dotfiles" in glob or "bootstrap" in glob:
+if "dotfiles" in global_cfg or "bootstrap" in global_cfg:
     errs.append("global file carries dotfiles or bootstrap; those belong in mise.toml")
-if "tools" in glob and next(iter(glob["tools"])) != "node":
+if "tools" in global_cfg and next(iter(global_cfg["tools"])) != "node":
     errs.append("node must be the first tool so npm: tools run on it")
 if "tools" in root:
     errs.append("repo-root file carries tools; they are only on PATH inside the clone")
@@ -57,7 +58,7 @@ hooks = set(root["bootstrap"].get("hooks", {}))
 if hooks != {"pre-packages", "post-defaults", "final"}:
     errs.append(f"hooks are {sorted(hooks)}")
 
-age = glob.get("settings", {}).get("minimum_release_age")
+age = global_cfg.get("settings", {}).get("minimum_release_age")
 if not isinstance(age, str):
     errs.append(f"minimum_release_age must be a duration string, got {age!r}")
 
@@ -65,7 +66,7 @@ for name in ("bootstrap", "setup-git", "refresh-unslop", "check"):
     if name not in root.get("tasks", {}):
         errs.append(f"repo-root task missing: {name}")
 for name in ("update:tools", "update:apps", "update:plugins", "update:dotfiles", "update:all", "setup-agents"):
-    if name not in glob.get("tasks", {}):
+    if name not in global_cfg.get("tasks", {}):
         errs.append(f"global task missing: {name}")
 
 for e in errs:
@@ -73,9 +74,11 @@ for e in errs:
 sys.exit(1 if errs else 0)
 PY
 ok "manifest shape"
+else
+  printf 'skip manifest shape: python3 has no tomllib\n'
+fi
 
-# 3. Every script in dry-run mode. HOME is a temp directory so nothing on this
-#    machine is read as state.
+# HOME is a temp directory so nothing on this Mac is read as state.
 tmp_home=$(mktemp -d)
 trap 'rm -rf "$tmp_home"' EXIT
 
@@ -100,8 +103,7 @@ echo "$out" | grep -q 'bootstrap --yes' || fail "install: bootstrap command miss
 echo "$out" | grep -q 'run setup-git' || fail "install: setup-git command missing"
 ok "install.sh --dry-run"
 
-# 4. The real parser, when a mise exists. On the work laptop this is skipped;
-#    the rehearsal on the personal Mac is where it runs.
+# The real parser, when a mise exists. The rehearsal is where this runs.
 if command -v mise >/dev/null 2>&1; then
   mise bootstrap --dry-run >/dev/null || fail "mise bootstrap --dry-run"
   ok "mise bootstrap --dry-run"
