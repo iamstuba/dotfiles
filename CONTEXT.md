@@ -16,6 +16,10 @@ _Avoid_: Brewfile, package list
 A third mise config file beside the global one, loaded only when `MISE_ENV` names it. Holds the tools one machine group gets on top of the manifest, such as work-only apps.
 _Avoid_: profile, environment file, work manifest
 
+**Trust**:
+mise refuses to load a config file no human has marked trusted. Bootstrap trusts the manifest and the overlay; anything running against a throwaway HOME has to grant its own.
+_Avoid_: allow, approve, whitelist
+
 **Tap package**:
 A Homebrew formula or cask that lives in a third-party tap rather than homebrew-core. mise cannot resolve one, so these stay out of the manifest's packages and brew installs them directly.
 _Avoid_: brew fallback, source build, third-party formula
@@ -97,7 +101,7 @@ The unit implementation runs in, one at a time: the files owned by a single tool
 _Avoid_: feature, epic, milestone
 
 **Rehearsal**:
-`mise bootstrap --dry-run` on the personal machine before the first real bootstrap. Prints hook bodies without running them, so everything the pre-packages hook installs and the post-defaults hook stay untested until the real run.
+`mise bootstrap --dry-run` on the personal machine before the first real bootstrap. Prints hook bodies without running them, so everything the pre-packages hook installs and the post-defaults hook go untried by the rehearsal itself.
 _Avoid_: trial, test run
 
 **Smoke test**:
