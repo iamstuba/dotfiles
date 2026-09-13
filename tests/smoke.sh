@@ -93,6 +93,13 @@ echo "$out" | grep -q 'write .*/.gitconfig-local' || fail "setup-git: local gitc
 echo "$out" | grep -q 'write .*/.gitconfig-work' || fail "setup-git: profile file write missing"
 ok "setup-git --dry-run"
 
+out=$(HOME=$tmp_home DOTFILES=$root DOTFILES_WORK=0 GIT_NAME=Test GIT_EMAIL=test@example.com GIT_PROFILES= \
+  sh install.sh --dry-run) || fail "install.sh --dry-run"
+echo "$out" | grep -q 'ssh-keygen' || fail "install: key generation missing"
+echo "$out" | grep -q 'bootstrap --yes' || fail "install: bootstrap command missing"
+echo "$out" | grep -q 'run setup-git' || fail "install: setup-git command missing"
+ok "install.sh --dry-run"
+
 # 4. The real parser, when a mise exists. On the work laptop this is skipped;
 #    the rehearsal on the personal Mac is where it runs.
 if command -v mise >/dev/null 2>&1; then
