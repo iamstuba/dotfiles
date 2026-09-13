@@ -70,6 +70,12 @@ min_version = "2026.8.15"  # last release that changed the dotfiles semantics we
 
 "~/.config/lazygit/config.yml" = "config/lazygit/config.yml"  # file-level: state.yml lives beside it
 
+# agents. One shared instruction file, linked into both agents so the rules
+# cannot disagree between them. file-level like lazygit above, because both
+# herdr integrations refuse a symlinked directory and setup-agents runs them.
+"~/.claude/CLAUDE.md" = "home/.agents/AGENTS.md"
+"~/.pi/agent/AGENTS.md" = "home/.agents/AGENTS.md"
+
 # ---------------------------------------------------------- macos defaults --
 # Vetoed line by line. Arrays, dicts, -currentHost and sudo writes are
 # in bin/macos-post-defaults.
