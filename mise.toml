@@ -13,6 +13,7 @@ min_version = "2026.8.15"  # last release that changed the dotfiles semantics we
 [bootstrap.packages]
 "brew:bash" = "latest"                            # bar plugins need bash 4+
 "brew:eza" = "latest"                             # aqua entry is Linux-only
+"brew:btop" = "latest"                            # aqua entry is Linux-only
 "brew:zsh-autosuggestions" = "latest"
 "brew:zsh-syntax-highlighting" = "latest"
 "brew:fzf-tab" = "latest"

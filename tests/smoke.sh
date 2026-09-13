@@ -577,3 +577,178 @@ if command -v mise >/dev/null 2>&1; then
 else
   printf 'skip mise bootstrap --dry-run: mise is not on PATH\n'
 fi
+
+# Every tool in [tools], asserted present. `mise bootstrap --dry-run` above
+# parses the manifest and installs nothing, so a backend that fails leaves no
+# mark on this suite. Before this block, bat and delta were the only tools in
+# the inventory named anywhere here, and both only as guards deciding whether
+# to skip.
+#
+# The inventory is read from the tracked file rather than asked of mise. On a
+# machine where ~/.config/mise/config.toml is not linked yet, mise reports no
+# tools at all, so a probe that asked mise would print ok having asserted
+# nothing. Reading the file cannot pass with zero coverage.
+#
+# `command -v` answers whether something on PATH has that name, not whether
+# mise put it there. On a Mac carrying a brew bat or delta as well, a failed
+# mise backend could still pass. A fresh Mac has no such overlap: brew installs
+# eza, bash, the zsh plugins, btop, sketchybar and borders, and none of those
+# is in [tools].
+tools_in() {
+  # One [tools] key per line. Strict: an unrecognised line is a failure, never
+  # a skip, because a silently dropped tool is the failure this block exists to
+  # catch. Verified against tomllib on both tracked files, keys and order.
+  awk '
+    /^[[:space:]]*\[/ {
+      h = $0
+      sub(/[[:space:]]*#.*$/, "", h); sub(/^[[:space:]]+/, "", h); sub(/[[:space:]]+$/, "", h)
+      if (h == "[tools]") { intools = 1; next }
+      # [tools.foo] declares a tool the flat scan below would never see.
+      if (h ~ /^\[tools\./) {
+        printf "  %s:%d: sub-table %s; this reads flat keys only\n", FILENAME, FNR, h > "/dev/stderr"
+        bad = 1
+      }
+      intools = 0
+      next
+    }
+    !intools { next }
+    {
+      line = $0
+      sub(/^[[:space:]]+/, "", line)
+      if (line == "" || line ~ /^#/) next
+      if (line ~ /^"[^"]+"[[:space:]]*=/) {            # "backend:name" = ...
+        k = line; sub(/^"/, "", k); sub(/"[[:space:]]*=.*$/, "", k); print k; n++; next
+      }
+      if (line ~ /^[A-Za-z0-9_-]+[[:space:]]*=/) {     # bare-key = ...
+        k = line; sub(/[[:space:]]*=.*$/, "", k); print k; n++; next
+      }
+      printf "  %s:%d: unrecognised line in [tools]: %s\n", FILENAME, FNR, $0 > "/dev/stderr"
+      bad = 1
+    }
+    END {
+      if (n == 0) {
+        printf "  %s: [tools] yielded no keys; the table moved or the file is unreadable\n", FILENAME > "/dev/stderr"
+        bad = 1
+      }
+      exit bad
+    }
+  ' "$1"
+}
+
+tools_map() {
+  # Inventory key, then the commands it installs, which is not the key wherever
+  # a backend prefix or a package name differs from the binary: ripgrep installs
+  # rg, github-cli installs gh, npm:typescript installs tsc. A key missing from
+  # this table fails below, so a tool added to [tools] cannot go unasserted by
+  # being forgotten.
+  #
+  # Read off a real install rather than guessed: every tool here was installed
+  # into a throwaway HOME on 2026-09-13 with mise 2026.9.6 and the binaries
+  # listed. Only the commands a tool is wanted for are asserted, so pnpm's pn,
+  # pnpx and pnx and node's corepack, npm and npx are left out.
+  #
+  # An exception carries `-` in place of its commands and a reason after a #.
+  # There are none. If this list ever reaches two or three, the rule that
+  # everything must resolve is the thing that is wrong, not this table.
+  cat <<'MAP'
+node node
+pnpm pnpm
+fzf fzf
+fd fd
+ripgrep rg
+zoxide zoxide
+bat bat
+jq jq
+yazi yazi ya
+starship starship
+glow glow
+shellcheck shellcheck
+github:agavra/tuicr tuicr
+delta delta
+lazygit lazygit
+github-cli gh
+aqua:neovim/neovim nvim
+stylua stylua
+lua-language-server lua-language-server
+marksman marksman
+oxlint oxlint
+oxfmt oxfmt
+npm:typescript tsc
+npm:vscode-langservers-extracted vscode-css-language-server vscode-eslint-language-server vscode-html-language-server vscode-json-language-server vscode-markdown-language-server
+npm:yaml-language-server yaml-language-server
+npm:bash-language-server bash-language-server
+herdr herdr
+claude claude
+pi pi
+lazydocker lazydocker
+MAP
+}
+
+tools_cmds() {
+  # A key's command list, or non-zero when the key has no line at all. Field
+  # one is the key, which is why keys must not contain spaces; none do.
+  tools_map | awk -v k="$1" '$1 == k {
+    $1 = ""; sub(/[[:space:]]*#.*$/, ""); sub(/^[[:space:]]+/, ""); print; f = 1
+  } END { exit !f }'
+}
+
+# Drift first, and with no mise guard on it. This half reads two tracked files
+# and nothing else, so gating it behind `command -v mise` would hand it the
+# disease this block was written to cure: a check that has never once run on
+# the machine it was written on.
+tools_keys=$(tools_in config/mise/config.toml) || fail "tools: config/mise/config.toml"
+work_keys=$(tools_in config/mise/config.work.toml) || fail "tools: config/mise/config.work.toml"
+all_keys="$tools_keys
+$work_keys"
+
+drift=
+for key in $all_keys; do
+  tools_cmds "$key" >/dev/null || drift="$drift
+  $key is in [tools] with no line in tools_map; add the command it installs"
+done
+for mapped in $(tools_map | awk '{ print $1 }'); do
+  printf '%s\n' "$all_keys" | grep -qxF -- "$mapped" \
+    || drift="$drift
+  $mapped is in tools_map but no longer in [tools]; delete the line"
+done
+if [ -n "$drift" ]; then
+  fail "tools inventory$drift"
+fi
+ok "tools inventory ($(printf '%s\n' "$all_keys" | wc -l | tr -d ' ') tools)"
+
+# Resolution. Skipped whole when mise is absent, because without mise nothing
+# in [tools] can be installed and every assertion below would be noise.
+if command -v mise >/dev/null 2>&1; then
+  # The overlay's tools exist only where the overlay loads. MISE_ENV is the
+  # documented switch, and miserc.toml is what install.sh actually writes;
+  # that file sets MISE_ENV for mise itself and is invisible as a variable
+  # here, so both are consulted.
+  overlay=no
+  case "${MISE_ENV:-}" in *work*) overlay=yes ;; esac
+  if grep -qs '^env *=.*"work"' "${XDG_CONFIG_HOME:-$HOME/.config}/mise/miserc.toml"; then
+    overlay=yes
+  fi
+  check_keys=$tools_keys
+  [ "$overlay" = no ] || check_keys=$all_keys
+
+  missing= asserted=0 skipped=0
+  for key in $check_keys; do
+    cmds=$(tools_cmds "$key") || fail "tools: $key lost its map line mid-run"
+    if [ "$cmds" = "-" ]; then
+      skipped=$((skipped + 1))
+      continue
+    fi
+    for cmd in $cmds; do
+      if command -v "$cmd" >/dev/null 2>&1; then
+        asserted=$((asserted + 1))
+      else
+        missing="$missing
+  $key declares $cmd, which is not on PATH"
+      fi
+    done
+  done
+  [ -z "$missing" ] || fail "tools did not install:$missing"
+  ok "tools resolve ($asserted commands, $skipped exceptions)"
+else
+  printf 'skip tools resolve: mise is not on PATH\n'
+fi
