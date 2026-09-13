@@ -60,7 +60,7 @@ min_version = "2026.8.15"  # last release that changed the dotfiles semantics we
 "~/.config/eza/theme.yml" = "config/eza/theme.yml"
 "~/.config/yazi/theme.toml" = "config/yazi/theme.toml"
 "~/.config/tuicr/config.toml" = "config/tuicr/config.toml"
-# Still reserved, still missing its source: ~/.config/bat/themes/tokyonight_night.tmTheme.
+"~/.config/bat/themes/tokyonight_night.tmTheme" = "config/bat/themes/tokyonight_night.tmTheme"
 
 # ---------------------------------------------------------- macos defaults --
 # Vetoed line by line. Arrays, dicts, -currentHost and sudo writes are
