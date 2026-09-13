@@ -103,7 +103,10 @@ run = """
   herdr integration install pi
   herdr plugin install plannotator/herdr-annotate/lite
   pi install git:github.com/mattpocock/skills@v1.2.3
-  rm -f ~/.claude/keybindings.json ~/.claude/.DS_Store
+  rm -f ~/.claude/keybindings.json ~/.claude/.DS_Store ~/.claude/skills/.DS_Store
+  # A local copy of unslop shadows the rules inlined into the shared
+  # instruction file. -rf because it is a directory and its absence is normal.
+  rm -rf ~/.claude/skills/unslop
   if [ -d ~/.claude/skills ]; then
     find ~/.claude/skills -maxdepth 1 -type l ! -exec test -e {} \\; -delete
   fi

@@ -690,6 +690,52 @@ probe_yaml "lazygit config" config/lazygit/config.yml '{
   "gui.theme.activeBorderColor": ["#ff9e64", "bold"]
 }'
 
+# The shared instruction file, which both agents read through their own
+# symlink. `mise run refresh-unslop` rewrites everything between the markers,
+# so the three ways it can go wrong are a marker that is not there exactly
+# once, a block carrying no rules, and a fetch that took the user's own rules
+# down with it. The last one is why this probe reads above the first marker.
+#
+# Counting the rules rather than asking whether the block is empty is the same
+# lesson the yazi theme taught: a fetch through a markdown converter stripped
+# every glyph from that file and it still parsed. Upstream calls its rule
+# numbers stable ids and leaves a gap when it drops one, so the count only ever
+# grows and a floor cannot go red on an honest upstream change.
+#
+# A missing file never reaches here: the manifest section above fails on any
+# [dotfiles] row whose source does not exist.
+AGENTS_FILE=home/.agents/AGENTS.md python3 - <<'AGENTS' || fail "shared instruction file"
+import sys, os, re, pathlib
+
+src = os.environ["AGENTS_FILE"]
+text = pathlib.Path(src).read_text()
+start, end = "<!-- unslop:start -->", "<!-- unslop:end -->"
+errs = []
+
+for marker in (start, end):
+    seen = text.count(marker)
+    if seen != 1:
+        errs.append(f"{src}: {marker} appears {seen} times, expected once")
+
+if not errs:
+    above, _, rest = text.partition(start)
+    block = rest.partition(end)[0]
+    # The attribution comment refresh-unslop writes itself is not content. A
+    # fetch that left only that behind has lost the rules.
+    body = re.sub(r"<!--.*?-->", "", block, flags=re.S)
+    rules = len(re.findall(r"^\d+\. ", body, flags=re.M))
+    if not above.strip():
+        errs.append(f"{src}: nothing above {start}; the user's own rules are gone")
+    if rules < 10:
+        errs.append(f"{src}: the block between the markers carries {rules} "
+                    "numbered rules, expected at least 10")
+
+for e in errs:
+    print("  " + e, file=sys.stderr)
+sys.exit(1 if errs else 0)
+AGENTS
+ok "shared instruction file"
+
 # The real parser, when a mise exists. This block went red on every Mac with
 # mise on it until the three tap entries left [bootstrap.packages]; see the
 # note there. It has no value as a pass/fail gate unless it can reach one.
