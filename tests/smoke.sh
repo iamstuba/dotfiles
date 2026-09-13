@@ -84,6 +84,13 @@ for path in ("config/starship.toml", "config/yazi/theme.toml", "config/tuicr/con
         selected = cfg.get("palette")
         if selected and selected not in cfg.get("palettes", {}):
             errs.append(f"starship selects palette {selected!r}, which it does not define")
+    if path == "config/yazi/theme.toml":
+        # Parsing is not enough. A fetch through a markdown converter once
+        # stripped every Nerd Font glyph from this file and it still parsed,
+        # which would have shipped yazi with no separators and no icons.
+        glyphs = sum(1 for c in p.read_text() if 0xE000 <= ord(c) <= 0xF8FF)
+        if glyphs < 8:
+            errs.append(f"{path} carries {glyphs} private-use glyphs, expected at least 8")
 
 for name in ("bootstrap", "setup-git", "refresh-unslop", "check"):
     if name not in root.get("tasks", {}):

@@ -45,8 +45,8 @@ unset_alt   = { fg = "#9d7cd8", bg = "#3b4261" }
 
 [status]
 overall   = { fg = "#c0caf5", bg = "#16161e" }
-sep_left  = { open = "", close = "" }
-sep_right = { open = "", close = "" }
+sep_left  = { open = "", close = "" }
+sep_right = { open = "", close = "" }
 
 # Progress
 progress_label  = { fg = "#c0caf5", bold = true }
@@ -78,9 +78,9 @@ border   = { fg = "#0db9d7" }
 active   = { fg = "#c0caf5", bg = "#343a55" }
 inactive = { fg = "#c0caf5" }
 
-icon_file    = ""
-icon_folder  = ""
-icon_command = ""
+icon_file    = ""
+icon_folder  = ""
+icon_command = ""
 
 # Tasks
 [tasks]
@@ -119,9 +119,9 @@ title_info  = { fg = "#0db9d7" }
 title_warn  = { fg = "#e0af68" }
 title_error = { fg = "#db4b4b" }
 
-icon_error = ""
-icon_warn = ""
-icon_info = ""
+icon_error = ""
+icon_warn = ""
+icon_info = ""
 
 # Help
 [help]
@@ -158,3 +158,4 @@ rules = [
 	{ name = "*/", fg = "#7aa2f7" },
 	{ name = "*", fg = "#c0caf5" }
 ]
+    
