@@ -191,6 +191,7 @@ if command -v zsh >/dev/null 2>&1; then
     echo "### path";      print -l $path
     echo "### setopt";    setopt
     echo "### bindkey";   bindkey
+    echo "### widgets";   zle -l
     # Resolved the way .zshrc resolves it, so this tracks the config rather
     # than assuming every terminal sends the same sequence for Delete.
     echo "### delkey";    bindkey -- "${terminfo[kdch1]:-^[[3~}"
@@ -243,10 +244,22 @@ if command -v zsh >/dev/null 2>&1; then
   # edit-command-line whether or not anything is bound to it, so an unanchored
   # grep passed with the bindkey line deleted.
   want bindkey '^"\^G" edit-command-line$' "Ctrl-G is not bound"
+  # Proves .zshrc still carries the line, and nothing more. zsh binds a key to
+  # a widget that does not exist without complaint, so this can pass with the
+  # plugin gone. The widget assertions below are what cover that.
   want bindkey '^"\^@" autosuggest-accept$' "Ctrl-Space is not bound"
   want bindkey '^"\^\[\[1;5C" forward-word$' "Ctrl-right is not bound"
   want bindkey '^"\^\[\[1;5D" backward-word$' "Ctrl-left is not bound"
   want delkey 'delete-char' "the delete key is not bound"
+
+  # The three brew plugins, each proved by something it defines rather than by
+  # a binding pointing at it. No guard: a brew phase that failed partway is the
+  # fresh-Mac state this is here to catch, so absence has to fail.
+  want widgets '^autosuggest-accept ' "zsh-autosuggestions did not load"
+  want widgets '^fzf-tab-complete$' "fzf-tab did not load"
+  # Syntax highlighting names no widget of its own; it wraps the ones already
+  # bound. _zsh_highlight is the entry point its README tells integrators to use.
+  want functions '^_zsh_highlight$' "zsh-syntax-highlighting did not load"
 
   for name in gs gss gwip gll lg ll l reload! cleanup lpath; do
     want alias "^$name=" "alias $name is missing"
