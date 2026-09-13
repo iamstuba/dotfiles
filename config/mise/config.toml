@@ -1,0 +1,102 @@
+# Global half of the manifest, symlinked to ~/.config/mise/config.toml: tools,
+# settings, and tasks that name no repo path. ~/.config/mise stays a real
+# directory so miserc.toml and mise's state can live beside this file.
+
+[settings]
+minimum_release_age = "7d"                      # reaches tool backends, never casks
+minimum_release_age_excludes = ["claude", "pi"]
+idiomatic_version_file_enable_tools = ["node"]
+
+[tools]
+node = "lts"        # stays first: the npm: tools run on it
+pnpm = "latest"
+
+fzf = "latest"
+fd = "latest"
+ripgrep = "latest"
+zoxide = "latest"
+bat = "latest"
+jq = "latest"
+btop = "latest"
+yazi = "latest"
+starship = "latest"
+glow = "latest"
+shellcheck = "latest"
+"github:agavra/tuicr" = "latest" # not in the registry; brew:tuicr is the fallback
+
+delta = "latest"
+lazygit = "latest"
+github-cli = "latest" # the installer needs it before the clone exists
+
+# mise owns every language server; mason is out.
+"aqua:neovim/neovim" = "latest" # the registry default is a vfox plugin
+stylua = "latest"
+lua-language-server = "latest"
+marksman = "latest"
+oxlint = "latest"
+oxfmt = "latest"
+"npm:typescript" = "latest"
+"npm:vscode-langservers-extracted" = "latest"
+"npm:yaml-language-server" = "latest"
+"npm:bash-language-server" = "latest"
+
+herdr = "latest"
+claude = "latest"
+pi = "latest"      # must stay on aqua:, never npm:
+
+# Tools and packages are separate inventories and fail separately.
+
+[tasks."update:tools"]
+description = "Update mise itself and every tool in the manifest."
+run = """
+  mise self-update -y
+  mise upgrade
+  pi update --extensions
+  herdr integration status --outdated-only
+"""
+
+[tasks."update:apps"]
+description = "Update Homebrew formulae and casks poured by mise."
+run = "mise bootstrap packages upgrade --yes"
+
+[tasks."update:plugins"]
+description = "Update Neovim plugins and write the lockfile."
+run = 'nvim --headless "+lua vim.pack.update(nil, { force = true })" +qa'
+
+[tasks."update:dotfiles"]
+description = "Fast-forward this repository when it is on main."
+run = """
+  repo="${DOTFILES:-$HOME/Projects/iamstuba/dotfiles}"
+  if [ "$(git -C "$repo" symbolic-ref --short HEAD)" = "main" ]; then
+    git -C "$repo" pull --ff-only origin main
+  else
+    echo "not on main, skipping"
+  fi
+"""
+
+[tasks."update:all"]
+description = "Everything, in order."
+# A run array is serial; depends may run in parallel. dotfiles first, because
+# update:plugins writes a tracked lockfile.
+run = [
+  { task = "update:dotfiles" },
+  { task = "update:tools" },
+  { task = "update:apps" },
+  { task = "update:plugins" },
+]
+
+[tasks.setup-agents]
+description = "Install the herdr integrations, the Plannotator plugin and pi's skills package."
+# Both herdr installs refuse a symlinked directory, so ~/.claude and ~/.pi stay
+# real. Every line is a no-op the second time.
+run = """
+  mkdir -p ~/.claude ~/.pi/agent
+  herdr integration install claude
+  herdr integration install pi
+  herdr plugin install plannotator/herdr-annotate/lite
+  pi install git:github.com/mattpocock/skills@v1.2.3
+  rm -f ~/.claude/keybindings.json ~/.claude/.DS_Store
+  if [ -d ~/.claude/skills ]; then
+    find ~/.claude/skills -maxdepth 1 -type l ! -exec test -e {} \\; -delete
+  fi
+"""

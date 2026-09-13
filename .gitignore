@@ -1,2 +1,5 @@
 # private planning repo clone, never tracked here
 .scratch/
+
+# Karabiner-Elements writes backups beside the tracked json
+config/karabiner/automatic_backups/

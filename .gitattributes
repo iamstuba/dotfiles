@@ -1,0 +1,3 @@
+# pi rewrites lastChangelogVersion on every update; the filter strips it on
+# commit. Registered repo-locally by the bootstrap task.
+home/.pi/agent/settings.json filter=pi-settings

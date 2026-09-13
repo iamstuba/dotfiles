@@ -1,0 +1,163 @@
+# Repo-root half of the manifest: packages, the symlink map, macOS defaults,
+# hooks, and the tasks that name a repo path. Tools, settings and the other
+# tasks are in config/mise/config.toml. Split by scope, not topic: tools are
+# only on PATH inside the declaring file's tree, and [dotfiles] sources resolve
+# against the declaring file's directory.
+
+min_version = "2026.8.15"  # last release that changed the dotfiles semantics we lean on
+
+# ---------------------------------------------------------------- packages --
+# No pins: brew and brew-cask ignore them. Formulae only where mise's own
+# backends cannot deliver.
+
+[bootstrap.packages]
+"brew:bash" = "latest"                            # bar plugins need bash 4+
+"brew:eza" = "latest"                             # aqua entry is Linux-only
+"brew:zsh-autosuggestions" = "latest"
+"brew:zsh-syntax-highlighting" = "latest"
+"brew:fzf-tab" = "latest"
+# Source builds, no bottles. If they fail unattended, rerun with DOTFILES_BREW_FALLBACK=1.
+"brew:FelixKratz/formulae/sketchybar" = "latest"
+"brew:FelixKratz/formulae/borders" = "latest"
+
+"brew-cask:ghostty" = "latest"
+"brew-cask:zen" = "latest"
+"brew-cask:proton-pass" = "latest"
+"brew-cask:slack" = "latest"                              # personal use too, so not the overlay
+"brew-cask:nikitabobko/tap/aerospace" = "latest"
+"brew-cask:karabiner-elements" = "latest"
+"brew-cask:thunderbird" = "latest"
+"brew-cask:proton-mail-bridge" = "latest"
+"brew-cask:vorssaint" = "latest"
+"brew-cask:grammarly-desktop" = "latest"
+"brew-cask:handy" = "latest"
+"brew-cask:anarlog" = "latest"
+"brew-cask:font-monaspace" = "latest"
+"brew-cask:font-symbols-only-nerd-font" = "latest"
+"brew-cask:font-sketchybar-app-font" = "latest"
+
+# ---------------------------------------------------------------- dotfiles --
+# Enumerated, never a wildcard: mise rejects a wildcard plus a specific entry
+# under it. Directory symlinks only for zsh, git, nvim, sketchybar, karabiner;
+# file-level elsewhere so runtime state stays out of the repo. Each area adds
+# its lines when the sources exist.
+
+[dotfiles]
+"~/.editorconfig" = "home/.editorconfig"
+"~/.ssh/config" = "config/ssh/config"
+"~/.config/mise/config.toml" = "config/mise/config.toml"            # file-level: miserc.toml lives beside it
+"~/.config/mise/config.work.toml" = "config/mise/config.work.toml"  # inert unless MISE_ENV names work
+
+# ---------------------------------------------------------- macos defaults --
+# Vetoed line by line. Arrays, dicts, -currentHost and sudo writes are
+# in bin/macos-post-defaults.
+
+[bootstrap.macos.dock]
+autohide = true
+show_recents = false
+orientation = "left"
+tilesize = 23
+mru_spaces = false
+
+[bootstrap.macos.keyboard]
+press_and_hold = false
+key_repeat = 1
+initial_key_repeat = 10
+
+[bootstrap.macos.finder]
+show_pathbar = true
+show_status_bar = true
+show_extensions_warning = false
+preferred_view_style = "list"
+show_all_files = true
+
+[bootstrap.macos.defaults]
+NSGlobalDomain.AppleShowAllExtensions = true
+NSGlobalDomain.NSNavPanelExpandedStateForSaveMode = true
+NSGlobalDomain.AppleKeyboardUIMode = 3
+NSGlobalDomain.NSWindowShouldDragOnGesture = true
+"com.apple.finder".FXDefaultSearchScope = "SCcf"
+"com.apple.assistant.support"."Assistant Enabled" = false
+"com.apple.Siri".UserHasDeclinedEnable = true
+"com.apple.WindowManager".StandardHideWidgets = true
+"com.apple.WindowManager".StageManagerHideWidgets = true
+"com.apple.ncprefs".content_visibility = 2
+NSGlobalDomain._HIHideMenuBar = true
+NSGlobalDomain.AppleMenuBarVisibleInFullscreen = false
+"com.apple.controlcenter".AutoHideMenuBarOption = 0
+NSGlobalDomain."com.apple.mouse.scaling" = 1.0              # seeded from the work laptop, corrected in the settings pass
+
+# ------------------------------------------------------------------- hooks --
+# Hooks run on system binaries only; anything needing a manifest tool is in
+# [tasks.bootstrap].
+
+[bootstrap.hooks.pre-packages]
+# Off by default. mise counts brew-installed formulae as installed, so its own
+# packages phase passes afterwards.
+run = """
+  [ "${DOTFILES_BREW_FALLBACK:-0}" = "1" ] || exit 0
+  [ -x /opt/homebrew/bin/sketchybar ] && exit 0
+  if [ ! -x /opt/homebrew/bin/brew ]; then
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  fi
+  /opt/homebrew/bin/brew install FelixKratz/formulae/sketchybar FelixKratz/formulae/borders
+"""
+
+[bootstrap.hooks.post-defaults]
+run = "{{ config_root }}/bin/macos-post-defaults"  # a bare relative path would depend on the caller's cwd
+
+[bootstrap.hooks.final]
+# Registers start-at-login and raises the permission dialogs.
+run = [
+  "open -a AeroSpace || true",
+  "open -a Karabiner-Elements || true",
+  "open -a Vorssaint || true",
+]
+
+# ------------------------------------------------------------------- tasks --
+
+[tasks.bootstrap]
+description = "Runs after the tools phase with the manifest's tools on PATH."
+run = [
+  "bat cache --build",  # delta and bat fall back silently without it
+  # Repo-local on purpose: a --global write would land in the tracked git config.
+  "git -C {{ config_root }} config filter.pi-settings.clean \"jq 'del(.lastChangelogVersion)'\"",
+  "mise run setup-agents",
+]
+
+[tasks.setup-git]
+description = "Write the local git identity, profiles and SSH key; flip remotes to SSH."
+run = "{{ config_root }}/bin/setup-git"
+
+[tasks.refresh-unslop]
+description = "Refetch the unslop rules into the marked block of home/.agents/AGENTS.md."
+# Source is Lauren Tan's pstack plugin, MIT. Frontmatter, title and the
+# Process section are stripped; the rules are the payload.
+run = """
+  file="{{ config_root }}/home/.agents/AGENTS.md"
+  url="https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/unslop/SKILL.md"
+  [ -f "$file" ] || { echo "refresh-unslop: $file is missing"; exit 1; }
+  grep -q '<!-- unslop:start -->' "$file" && grep -q '<!-- unslop:end -->' "$file" \
+    || { echo "refresh-unslop: markers missing in $file"; exit 1; }
+  body=$(mktemp)
+  curl -fsSL "$url" | awk '
+    /^---$/ && fm < 2 { fm++; next }
+    fm < 2 { next }
+    /^# Unslop/ { next }
+    /^## Process/ { skip = 1; next }
+    /^## / { skip = 0 }
+    !skip { print }
+  ' > "$body"
+  {
+    awk '{ print } /<!-- unslop:start -->/ { exit }' "$file"
+    echo "<!-- Rules by Lauren Tan, https://github.com/cursor/plugins/tree/main/pstack/skills/unslop, MIT. Rewritten by mise run refresh-unslop; edit upstream, not here. -->"
+    cat "$body"
+    awk 'f { print } /<!-- unslop:end -->/ { f = 1; print }' "$file"
+  } > "$file.new"
+  mv "$file.new" "$file"
+  rm -f "$body"
+"""
+
+[tasks.check]
+description = "Parse the manifest and run every script dry."
+run = "sh {{ config_root }}/tests/smoke.sh"

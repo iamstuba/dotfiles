@@ -1,0 +1,10 @@
+# Work overlay, symlinked beside the global config and read only when MISE_ENV
+# includes "work". The installer writes ~/.config/mise/miserc.toml with
+# env = ["work"] on a work machine; that file is never tracked. MISE_ENV
+# cannot live in a mise.toml because it decides which mise.toml files load.
+
+[tools]
+lazydocker = "latest"
+
+[bootstrap.packages]
+"brew-cask:orbstack" = "latest"
