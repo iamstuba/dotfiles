@@ -9,7 +9,7 @@ Any Mac this repo bootstraps. The personal MacBook is the primary target; the wo
 _Avoid_: laptop, host, work machine
 
 **Manifest**:
-The two tracked mise config files that together declare everything the personal machine gets. The global file (`config/mise/config.toml`, symlinked) holds tools, settings and tasks; the repo-root `mise.toml` holds packages, the symlink map, macOS defaults and hooks.
+The two tracked mise config files that together declare everything the personal machine gets. The global file (`config/mise/config.toml`, symlinked) holds tools and settings; the repo-root `mise.toml` holds packages, the symlink map, macOS defaults and hooks. Both hold tasks, split by whether the task names a repo path.
 _Avoid_: Brewfile, package list
 
 **Overlay**:
@@ -83,6 +83,14 @@ _Avoid_: colorscheme, palette, theme pack
 **Area**:
 The unit implementation runs in, one at a time: the files owned by a single tool.
 _Avoid_: feature, epic, milestone
+
+**Rehearsal**:
+`mise bootstrap --dry-run` on the personal machine before the first real bootstrap. Prints hooks, never builds, so source builds and the post-defaults script stay untested until the real run.
+_Avoid_: dry run, trial, test run
+
+**Smoke test**:
+`tests/smoke.sh`, what `mise run check` runs. Parses the manifest and runs every script in dry-run mode. Extended by each area, never split.
+_Avoid_: CI, test suite
 
 **Launcher**:
 The field on Cmd+Space that opens apps, pastes from clipboard history and answers sums. Vorssaint's Command Bar. Searches files only in named folders.
