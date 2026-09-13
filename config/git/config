@@ -21,12 +21,36 @@
 [commit]
 	verbose = true              # the diff is in the editor while I write the message
 
+[core]
+	pager = delta               # every `git log` errors until delta is installed
+
 [credential "https://github.com"]
 	# Scoped to github.com so it layers over the osxkeychain helper Apple's
 	# Command Line Tools set system-wide. Never run `gh auth setup-git`: it
 	# calls `git config --global`, which on a fresh Mac writes into this file.
 	# setup-git sets gh's protocol to ssh, so this covers hand-pasted URLs only.
 	helper = !gh auth git-credential
+
+[delta]
+	navigate = true             # n and N jump file to file in a long diff
+	line-numbers = true
+	# No side-by-side. A diff has to stay readable in a narrow pane.
+	# tokyonight_night is the bat theme config/bat/themes tracks. `bat cache
+	# --build` in the bootstrap task is what makes the name resolve, and delta
+	# falls back without saying so when it does not.
+	syntax-theme = tokyonight_night
+	# Diff colours verbatim from folke/tokyonight.nvim, extras/delta/tokyonight_night.gitconfig.
+	minus-style                   = syntax "#4a272f"
+	minus-non-emph-style          = syntax "#4a272f"
+	minus-emph-style              = syntax "#713137"
+	minus-empty-line-marker-style = syntax "#4a272f"
+	line-numbers-minus-style      = "#914c54"
+	plus-style                    = syntax "#243e4a"
+	plus-non-emph-style           = syntax "#243e4a"
+	plus-emph-style               = syntax "#2c5a66"
+	plus-empty-line-marker-style  = syntax "#243e4a"
+	line-numbers-plus-style       = "#449dab"
+	line-numbers-zero-style       = "#3b4261"
 
 [diff]
 	algorithm = histogram
@@ -50,6 +74,9 @@
 
 [init]
 	defaultBranch = main
+
+[interactive]
+	diffFilter = delta --color-only   # `git add -p` is coloured the same as reading a diff
 
 [merge]
 	conflictStyle = zdiff3      # shows the common ancestor as well as both sides

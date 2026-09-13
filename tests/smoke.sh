@@ -385,6 +385,22 @@ LOCAL
     'rerere.enabled=true' \
     'rerere.autoupdate=true' \
     'credential.https://github.com.helper=!gh auth git-credential' \
+    'core.pager=delta' \
+    'interactive.difffilter=delta --color-only' \
+    'delta.navigate=true' \
+    'delta.line-numbers=true' \
+    'delta.syntax-theme=tokyonight_night' \
+    'delta.minus-style=syntax #4a272f' \
+    'delta.minus-non-emph-style=syntax #4a272f' \
+    'delta.minus-emph-style=syntax #713137' \
+    'delta.minus-empty-line-marker-style=syntax #4a272f' \
+    'delta.line-numbers-minus-style=#914c54' \
+    'delta.plus-style=syntax #243e4a' \
+    'delta.plus-non-emph-style=syntax #243e4a' \
+    'delta.plus-emph-style=syntax #2c5a66' \
+    'delta.plus-empty-line-marker-style=syntax #243e4a' \
+    'delta.line-numbers-plus-style=#449dab' \
+    'delta.line-numbers-zero-style=#3b4261' \
     'user.name=Test Person' \
     'user.email=personal@example.com' \
     'commit.gpgsign=true'
@@ -427,6 +443,65 @@ LOCAL
     git_probe -C "$git_home/Personal/repo" check-ignore -q "$pattern" \
       || fail "git: the global ignore does not cover $pattern through the symlink"
   done
+
+  # delta, the pager. Guarded on bat as well, because delta reads its syntax
+  # theme out of bat's cache. The bootstrap task's `bat cache --build` is what
+  # makes the name resolve, and this builds one the same way. The two
+  # backgrounds below are delta's own keys and survive a syntax theme that never
+  # loaded, so they cannot be the whole assertion. The theme file is tracked, so
+  # its absence fails here rather than skipping.
+  if command -v delta >/dev/null 2>&1 && command -v bat >/dev/null 2>&1; then
+    mkdir -p "$git_home/.config/bat/themes"
+    ln -s "$root/config/bat/themes/tokyonight_night.tmTheme" \
+          "$git_home/.config/bat/themes/tokyonight_night.tmTheme"
+    # Both XDG vars are unset for the reason the bat block unsets both: they
+    # come from whoever calls `mise run check`, and a set XDG_CACHE_HOME sends
+    # this build into that caller's own bat cache and reads the result back.
+    (unset XDG_CONFIG_HOME XDG_CACHE_HOME
+     HOME=$git_home bat cache --build >/dev/null 2>&1) \
+      || fail "delta: bat cache --build failed under the temp HOME"
+
+    # Two commits, so there is a real diff to render. The fixture local file
+    # turns gpgsign on and names a key that does not exist, so it is off here.
+    delta_repo=$git_home/Personal/repo
+    printf 'one\ntwo\n' >"$delta_repo/f.txt"
+    git_probe -C "$delta_repo" add f.txt || fail "delta: staging the first revision failed"
+    git_probe -C "$delta_repo" -c commit.gpgsign=false commit -qm one \
+      || fail "delta: the first fixture commit failed"
+    printf 'one\nTWO\nthree\n' >"$delta_repo/f.txt"
+    git_probe -C "$delta_repo" add f.txt || fail "delta: staging the second revision failed"
+    git_probe -C "$delta_repo" -c commit.gpgsign=false commit -qm two \
+      || fail "delta: the second fixture commit failed"
+
+    # git pages to a terminal only, and this runs on a pipe, so delta is invoked
+    # by hand. `core.pager = delta` reaching git is asserted in the list above.
+    # The two run separately so a git failure cannot hide behind delta's exit.
+    raw=$(git_probe -C "$delta_repo" log -p -1 --no-color) \
+      || fail "delta: git log failed in the fixture repo"
+    # Exported, not prefixed. A prefix binds to the printf, and delta is the
+    # process that wants the config.
+    rendered=$(unset XDG_CONFIG_HOME XDG_CACHE_HOME
+               cd "$delta_repo"
+               HOME=$git_home
+               GIT_CONFIG_NOSYSTEM=1
+               export HOME GIT_CONFIG_NOSYSTEM
+               printf '%s\n' "$raw" | delta --paging=never) \
+      || fail "delta: rendering the diff failed"
+    # #243e4a is plus-style's background, #4a272f is minus-style's, both from the
+    # tracked [delta] block.
+    printf '%s' "$rendered" | grep -q '48;2;36;62;74' \
+      || fail "delta: the added line carries no tokyonight plus background"
+    printf '%s' "$rendered" | grep -q '48;2;74;39;47' \
+      || fail "delta: the removed line carries no tokyonight minus background"
+    # #c0caf5 is the tmTheme's foreground and the only byte here that proves
+    # syntax-theme resolved. A name that does not exist paints both backgrounds
+    # above, writes one line to stderr and exits 0.
+    printf '%s' "$rendered" | grep -q '38;2;192;202;245' \
+      || fail "delta: the diff text is not coloured by the tokyonight_night syntax theme"
+    ok "delta pager"
+  else
+    printf 'skip delta pager: delta, bat or the tracked bat theme is missing\n'
+  fi
 
   # The include is the last line of the tracked file so the machine's own file
   # wins. Nothing tracked overlaps ~/.gitconfig-local today, so the order only
