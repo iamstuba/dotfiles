@@ -84,6 +84,14 @@ _Avoid_: TUI, porcelain, git client
 The full-screen client for reading a diff or a pull request. tuicr. Owns no git state.
 _Avoid_: TUI, diff viewer, code review tool
 
+**Coding agent**:
+One of the two the manifest installs and configures: Claude Code and pi. herdr owns their panes but is not one of them.
+_Avoid_: assistant, AI, bot, LLM
+
+**Shared instruction file**:
+`home/.agents/AGENTS.md`, the one file both coding agents read as their global instructions, linked to a different path in each. Half the owner's own rules, half a vendored copy of someone else's writing rules.
+_Avoid_: CLAUDE.md, rules file, system prompt
+
 **Agent multiplexer**:
 The terminal layer that owns the panes coding agents run in and reports whether each is working, idle or blocked. herdr. Does not queue work or restart agents.
 _Avoid_: orchestrator, harness, agent manager
