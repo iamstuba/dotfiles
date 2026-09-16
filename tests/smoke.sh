@@ -628,13 +628,22 @@ else
   printf 'skip git config: git is not on PATH\n'
 fi
 
-# Both tracked YAML files, through one probe. Each names dotted paths and the
-# value it expects, so a missing path and a changed value fail separately.
+# Tracked config files, through one probe. Each names dotted paths and the value
+# it expects, so a missing path and a changed value fail separately.
+#
+# A numeric segment indexes a list. The Claude hook command sits under two of
+# them, and without indexing that assertion would have to be dropped: a dropped
+# assertion is how the yazi theme shipped with every glyph missing.
+#
+# The fourth argument names paths that must not resolve at all. Absence is its
+# own assertion and the expected-value map cannot make it, because a missing
+# path is how that map reports a failure.
 probe_yaml() {
-  # A label, the file, and a JSON object of path to expected value.
+  # A label, the file, a JSON object of path to expected value, and optionally a
+  # JSON array of paths that must be absent.
   [ -f "$2" ] || fail "$1: $2 is missing"
   cfg_json=$(yq -p yaml -o json "$2") || fail "$2 does not parse"
-  SRC=$2 CFG_JSON=$cfg_json WANT_JSON=$3 python3 - <<'PROBE' || fail "$1"
+  SRC=$2 CFG_JSON=$cfg_json WANT_JSON=$3 ABSENT_JSON=${4:-[]} python3 - <<'PROBE' || fail "$1"
 import sys, os, json
 
 cfg = json.loads(os.environ["CFG_JSON"])
@@ -645,6 +654,11 @@ missing = object()
 def resolve(path):
     node = cfg
     for key in path.split("."):
+        if isinstance(node, list):
+            if not key.isdigit() or int(key) >= len(node):
+                return missing
+            node = node[int(key)]
+            continue
         if not isinstance(node, dict) or key not in node:
             return missing
         node = node[key]
@@ -657,12 +671,19 @@ for path, expected in json.loads(os.environ["WANT_JSON"]).items():
     elif got != expected:
         errs.append(f"{src}: {path} is {got!r}, expected {expected!r}")
 
+for path in json.loads(os.environ["ABSENT_JSON"]):
+    got = resolve(path)
+    # An empty array is a present key, and the write this catches makes one.
+    if got is not missing:
+        errs.append(f"{src}: {path} is present as {got!r}, expected absent")
+
 for e in errs:
     print("  " + e, file=sys.stderr)
 sys.exit(1 if errs else 0)
 PROBE
   ok "$1"
 }
+
 
 # The eza theme, out of the zsh block where it used to live. Nothing here needs
 # zsh, so a machine without one skipped it for no reason.
@@ -735,6 +756,54 @@ for e in errs:
 sys.exit(1 if errs else 0)
 AGENTS
 ok "shared instruction file"
+
+# Claude Code's settings, which yq parses as YAML unchanged. Read from the file
+# rather than asked of the tool, which every probe here prefers: `claude` has no
+# subcommand that prints the settings it resolved, and a bare `claude config`
+# is taken as a prompt and answered.
+#
+# Three of the eight paths are what an unattended pane depends on: auto mode,
+# the denied credential paths, and five minutes before a long test suite is
+# killed. The hook is the fourth and the one that earns its place. `herdr
+# integration install claude` writes the same entry with this laptop's home path
+# baked in, and the tracked file is a symlink it can reach, so an absolute path
+# here is a bootstrap side effect to remove rather than a state to commit.
+# Asserted whole rather than as a `bash ~/` prefix, since the rest of the line
+# is just as fixed, and with the matcher and timeout beside it: an entry that
+# lost either one binds to nothing or waits forever.
+#
+# The deny list is asserted as one list rather than counted. A count of thirteen
+# passes a file where `~/.ssh/**` became `~/.ssh.bak/**`.
+#
+# Neither `allow` nor `ask` may be there, and neither may arrive empty either.
+# Approvals belong in ~/.claude/settings.local.json, which this repo does not
+# track; an `allow` here would be the client writing into the symlink, and on
+# the work laptop it would be employer paths in a public repo. `ask` is gone by
+# decision: in a pane nobody is watching, a prompt is a stall.
+probe_yaml "claude settings" home/.claude/settings.json '{
+  "model": "opus",
+  "effortLevel": "high",
+  "permissions.defaultMode": "auto",
+  "permissions.deny": [
+    "Read(.env)",
+    "Read(.env.*)",
+    "Read(secrets/**)",
+    "Read(~/.ssh/**)",
+    "Edit(~/.ssh/**)",
+    "Read(~/.aws/**)",
+    "Edit(~/.aws/**)",
+    "Read(~/.config/gh/hosts.yml)",
+    "Edit(~/.config/gh/hosts.yml)",
+    "Read(~/.claude.json)",
+    "Edit(~/.claude.json)",
+    "Read(~/.pi/agent/auth.json)",
+    "Edit(~/.pi/agent/auth.json)"
+  ],
+  "env.BASH_DEFAULT_TIMEOUT_MS": "300000",
+  "hooks.SessionStart.0.matcher": "*",
+  "hooks.SessionStart.0.hooks.0.command": "bash ~/.claude/hooks/herdr-agent-state.sh session",
+  "hooks.SessionStart.0.hooks.0.timeout": 10
+}' '["permissions.allow", "permissions.ask"]'
 
 # The real parser, when a mise exists. This block went red on every Mac with
 # mise on it until the three tap entries left [bootstrap.packages]; see the

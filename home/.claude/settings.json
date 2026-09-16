@@ -1,0 +1,51 @@
+{
+  "model": "opus",
+  "theme": "dark",
+  "editorMode": "normal",
+  "effortLevel": "high",
+  "cleanupPeriodDays": 90,
+  "disableBundledSkills": true,
+  "skipAutoPermissionPrompt": true,
+  "awaySummaryEnabled": false,
+  "spinnerTipsEnabled": false,
+  "feedbackDrafts": "off",
+  "enabledPlugins": {
+    "mattpocock-skills@claude-plugins-official": true,
+    "slack@claude-plugins-official": true
+  },
+  "env": {
+    "BASH_DEFAULT_TIMEOUT_MS": "300000"
+  },
+  "permissions": {
+    "defaultMode": "auto",
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(secrets/**)",
+      "Read(~/.ssh/**)",
+      "Edit(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Edit(~/.aws/**)",
+      "Read(~/.config/gh/hosts.yml)",
+      "Edit(~/.config/gh/hosts.yml)",
+      "Read(~/.claude.json)",
+      "Edit(~/.claude.json)",
+      "Read(~/.pi/agent/auth.json)",
+      "Edit(~/.pi/agent/auth.json)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/herdr-agent-state.sh session",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
