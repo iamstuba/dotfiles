@@ -123,3 +123,11 @@ _Avoid_: block, check, assertion, case
 **Launcher**:
 The field on Cmd+Space that opens apps, pastes from clipboard history and answers sums. Vorssaint's Command Bar. Searches files only in named folders.
 _Avoid_: Spotlight, Raycast, search bar
+
+**Daily browser**:
+LibreWolf. Holds the personal session and everything that is not work. Its prefs and its enterprise policies are tracked; the cookie exceptions that survive its shutdown clearing are not.
+_Avoid_: main browser, default browser, Zen
+
+**Work browser**:
+Helium. Holds the work session and the work password manager, and is where Chrome DevTools work happens, since no Gecko browser has an equivalent. In the manifest rather than the overlay, because the devtools half is needed on every personal machine.
+_Avoid_: second browser, devtools browser, Chromium
