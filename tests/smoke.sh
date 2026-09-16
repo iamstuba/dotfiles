@@ -739,12 +739,97 @@ ok "shared instruction file"
 # The real parser, when a mise exists. This block went red on every Mac with
 # mise on it until the three tap entries left [bootstrap.packages]; see the
 # note there. It has no value as a pass/fail gate unless it can reach one.
+#
+# HOME is a temp directory, the way every other dry run above takes one. With
+# the real HOME the dotfiles phase refuses to overwrite whatever already sits
+# at a target and the run ends there, so the probe graded this laptop rather
+# than the manifest and went redder with every row an area added. Against a
+# fresh HOME the plan runs to the final hooks, which is the first time mise
+# itself reaches the defaults, tools, task and hook phases here. The refusal
+# is still worth knowing before a first bootstrap, so it is the warning below.
 if command -v mise >/dev/null 2>&1; then
-  mise bootstrap --dry-run >/dev/null || fail "mise bootstrap --dry-run"
+  # Inside $tmp_home so the trap above already cleans it up.
+  mise_home=$tmp_home/mise-home
+  mkdir -p "$mise_home"
+  # HOME alone does not make it fresh. .zshenv exports XDG_CONFIG_HOME as an
+  # absolute path, so both runs below would inherit the caller's and read the
+  # real ~/.config/mise/config.toml through it. Measured: with it set,
+  # `mise config ls` lists that file and all 30 of its tools; unset, only this
+  # repo's mise.toml. Unset for the same reason the bat probe unsets it.
+  #
+  # MISE_TRUSTED_CONFIG_PATHS goes with it. This repo does not grant trust
+  # through that variable, and inherited it would grant trust anyway: an
+  # untrusted temp HOME exits 1 without it and 0 with it, which is exactly the
+  # mutation the trust call below has to stay honest about.
+  #
+  # The same trust install.sh grants, pinned into the temp HOME for the reason
+  # the zsh probe pins it: MISE_STATE_DIR outranks both HOME and an inherited
+  # XDG_STATE_HOME. Untrusted, the dry run exits 1 on the manifest it never
+  # read, so a missing grant cannot become a pass that asserted nothing.
+  dry_state=$mise_home/.local/state/mise
+  dry_trust=$(unset XDG_CONFIG_HOME MISE_TRUSTED_CONFIG_PATHS
+              HOME=$mise_home MISE_STATE_DIR=$dry_state \
+                mise trust "$root/mise.toml" 2>&1) \
+    || fail "mise trust failed against the dry run's HOME: $dry_trust"
+  # mise writes the plan to stderr, three hundred lines of it against this
+  # manifest, so both streams are captured and printed only on a failure.
+  plan=$(unset XDG_CONFIG_HOME MISE_TRUSTED_CONFIG_PATHS
+         HOME=$mise_home MISE_STATE_DIR=$dry_state mise bootstrap --dry-run 2>&1) || {
+    printf '%s\n' "$plan" >&2
+    fail "mise bootstrap --dry-run"
+  }
+  # The exit code alone does not say how far the run got, and the plan is now
+  # hidden on success, so a mise that stopped early would look identical to one
+  # that finished. This is the last phase header mise prints, and reaching it is
+  # the whole reason the HOME above is a temp directory. A grep for package
+  # names was the other candidate and lost: it echoed an assertion made
+  # elsewhere, while this one is about truncation and nothing else asserts it.
+  printf '%s\n' "$plan" | grep -q '^mise bootstrap: final hooks$' \
+    || fail "mise bootstrap --dry-run stopped before the final hooks"
   ok "mise bootstrap --dry-run"
 else
   printf 'skip mise bootstrap --dry-run: mise is not on PATH\n'
 fi
+
+# What the dotfiles phase above used to die on, read from the real HOME that
+# the dry run deliberately cannot see. A warning and not a failure, for the
+# same reason the ~/.gitconfig warning gives: a machine mid-migration is a
+# legal state and the fresh Mac this repo targets holds none of these. Needs
+# no mise, so it also tells a machine without one what a bootstrap would hit.
+occupied=$(ROOT_JSON=$root_json python3 - <<'PY'
+import os, json, pathlib
+
+home = pathlib.Path.home()
+
+def occupied(path):
+    # What mise refuses, measured against `mise dot apply` 2026.9.8: a symlink
+    # it overwrites, right or wrong or dangling, and anything else already
+    # there it leaves alone and fails on. So a second bootstrap is silent here
+    # and only a file placed by hand is named.
+    if path.is_symlink():
+        return False
+    if path.exists():
+        return True
+    # A target under a parent that is a file does not exist and cannot be
+    # created either. Rare, and the rule above would call it free.
+    for parent in path.parents:
+        if parent == home or parent == parent.parent:
+            return False
+        if parent.exists() and not parent.is_dir():
+            return True
+    return False
+
+for target in json.loads(os.environ["ROOT_JSON"]).get("dotfiles", {}):
+    # expanduser rather than slicing off "~/", so an absolute target is left
+    # alone instead of being measured against the repo it is declared in.
+    if occupied(pathlib.Path(target).expanduser()):
+        print("  " + target)
+PY
+) || fail "dotfiles targets"
+if [ -n "$occupied" ]; then
+  printf 'warn a first bootstrap refuses these targets, which already hold files here; move them aside:\n%s\n' "$occupied"
+fi
+ok "dotfiles targets"
 
 # Every tool in [tools], asserted present. `mise bootstrap --dry-run` above
 # parses the manifest and installs nothing, so a backend that fails leaves no
