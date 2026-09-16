@@ -76,6 +76,12 @@ min_version = "2026.8.15"  # last release that changed the dotfiles semantics we
 "~/.claude/CLAUDE.md" = "home/.agents/AGENTS.md"
 "~/.pi/agent/AGENTS.md" = "home/.agents/AGENTS.md"
 "~/.claude/settings.json" = "home/.claude/settings.json"
+"~/.pi/agent/settings.json" = "home/.pi/agent/settings.json"
+"~/.pi/agent/themes/tokyonight_night.json" = "home/.pi/agent/themes/tokyonight_night.json"
+
+# herdr. file-level: its config directory also holds the socket, the logs,
+# session.json and the installed plugins.
+"~/.config/herdr/config.toml" = "config/herdr/config.toml"
 
 # ---------------------------------------------------------- macos defaults --
 # Vetoed line by line. Arrays, dicts, -currentHost and sudo writes are

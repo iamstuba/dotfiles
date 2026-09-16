@@ -1,0 +1,21 @@
+{
+  "theme": "Tokyo Night",
+  "defaultProvider": "openai",
+  "defaultModel": "gpt-5.6-terra",
+  "defaultThinkingLevel": "medium",
+  "quietStartup": true,
+  "collapseChangelog": true,
+  "enableInstallTelemetry": false,
+  "packages": [
+    {
+      "source": "git:github.com/mattpocock/skills@v1.2.3",
+      "skills": [
+        "skills/engineering/*",
+        "skills/productivity/*"
+      ],
+      "extensions": [],
+      "prompts": [],
+      "themes": []
+    }
+  ]
+}

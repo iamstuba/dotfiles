@@ -1,0 +1,42 @@
+# herdr, diff only: everything omitted here stays at herdr's own default,
+# including the ctrl+b prefix and the whole [ui] block. herdr rewrites this
+# file itself on onboarding, on a theme pick and on `config reset-keys`, and it
+# writes through the symlink rather than replacing it.
+
+# Bootstrap ends in a multiplexer, not a wizard.
+onboarding = false
+
+[theme]
+# The bundled port, so this window matches the other thirteen tools.
+name = "tokyo-night"
+
+[update]
+# Both default true and reach herdr.dev in the background.
+version_check = false
+manifest_check = false
+
+# The four actions herdr-annotate/lite publishes. None collides with herdr's
+# own bindings, which all hang off the ctrl+b prefix.
+[[keys.command]]
+key = "prefix+a"
+type = "plugin_action"
+command = "annotate.capture"
+description = "annotate text"
+
+[[keys.command]]
+key = "prefix+shift+a"
+type = "plugin_action"
+command = "annotate.copy-context"
+description = "copy annotations as context"
+
+[[keys.command]]
+key = "prefix+ctrl+a"
+type = "plugin_action"
+command = "annotate.copy-archive"
+description = "copy annotations as context and archive them"
+
+[[keys.command]]
+key = "prefix+m"
+type = "plugin_action"
+command = "annotate.manage"
+description = "manage annotations"

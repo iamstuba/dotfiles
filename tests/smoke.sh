@@ -805,6 +805,227 @@ probe_yaml "claude settings" home/.claude/settings.json '{
   "hooks.SessionStart.0.hooks.0.timeout": 10
 }' '["permissions.allow", "permissions.ask"]'
 
+# pi's settings. The provider and model are the pair that decides whether a
+# fresh Mac's first `pi` opens on a working model or on a login error, so both
+# are asserted by name; they flip together the day there is a ChatGPT
+# subscription. The pinned source is the whole point of tracking `packages`:
+# someone else's skills land on this machine only when the tag here moves.
+#
+# `enableInstallTelemetry` is asserted although nothing in this repo sets it by
+# hand, because pi writes this file itself from /settings and a toggle there
+# would put the vendor ping back with nothing else to notice it.
+# `defaultThinkingLevel` is deliberately left out for the mirror-image reason:
+# changing it from /thinking is ordinary use and should not turn this red.
+#
+# The three empty arrays are load-bearing and read backwards. In pi 0.85.1 an
+# absent key loads everything that type; an empty array is the only way to say
+# none (`applyPackageFilter`, "Empty array explicitly disables all resources of
+# this type"). Dropping them would install a third party's extensions, which are
+# executable, on the next bootstrap.
+probe_yaml "pi settings" home/.pi/agent/settings.json '{
+  "theme": "Tokyo Night",
+  "defaultProvider": "openai",
+  "defaultModel": "gpt-5.6-terra",
+  "enableInstallTelemetry": false,
+  "packages.0.source": "git:github.com/mattpocock/skills@v1.2.3",
+  "packages.0.extensions": [],
+  "packages.0.prompts": [],
+  "packages.0.themes": []
+}'
+
+# The same pinned source, twice: `setup-agents` installs it and these settings
+# declare it. Bumping one and not the other leaves pi loading skills it was not
+# told about, which is the thing the pin exists to prevent.
+SRC=$(printf '%s' "$global_json" | yq -r '.tasks."setup-agents".run') \
+WANT=$(yq -p yaml -o json home/.pi/agent/settings.json | yq -r '.packages[0].source') \
+python3 - <<'PISRC' || fail "pi skills pin"
+import sys, os, re
+
+run = os.environ["SRC"]
+want = os.environ["WANT"]
+installed = re.findall(r"^\s*pi install (\S+)", run, flags=re.M)
+if installed != [want]:
+    print(f"  setup-agents runs `pi install` on {installed}, but pi's settings "
+          f"pin {want!r}", file=sys.stderr)
+    sys.exit(1)
+PISRC
+ok "pi skills pin"
+
+# The clean filter, asserted where it actually runs rather than in the worktree.
+# Reading this file for the absence of lastChangelogVersion would be red forever
+# on any machine that uses pi: ~/.pi/agent/settings.json is a symlink to it, pi
+# writes the key through the link on every update, and the filter strips it on
+# commit without touching the worktree. So the key comes back and stays.
+#
+# What matters is the filter working, so that is what is asserted: the
+# attribute is still wired in .gitattributes, and the blob git stored carries no
+# key. Before the first commit of this file there is no blob, which is the one
+# case that has nothing to say rather than something to hide.
+if git -C "$root" rev-parse --git-dir >/dev/null 2>&1; then
+  attr=$(git -C "$root" check-attr filter -- home/.pi/agent/settings.json)
+  case "$attr" in
+    *": filter: pi-settings") ;;
+    *) fail "pi clean filter: .gitattributes no longer names the filter for pi's settings ($attr)" ;;
+  esac
+  # Repo-local by design: a --global write would land in the tracked git config.
+  # [tasks.bootstrap] registers it, so a clone that has not bootstrapped yet is
+  # a warning and not a failure, the way ~/.gitconfig is above.
+  if [ -z "$(git -C "$root" config --get filter.pi-settings.clean || true)" ]; then
+    printf 'warn filter.pi-settings.clean is not registered in this clone; run mise run bootstrap\n'
+  fi
+  if git -C "$root" cat-file -e HEAD:home/.pi/agent/settings.json 2>/dev/null; then
+    git -C "$root" show HEAD:home/.pi/agent/settings.json \
+      | python3 -c 'import json,sys; sys.exit(1 if "lastChangelogVersion" in json.load(sys.stdin) else 0)' \
+      || fail "pi clean filter: the committed settings carry lastChangelogVersion"
+  else
+    printf 'skip pi clean filter blob: pi settings are not committed yet\n'
+  fi
+  ok "pi clean filter"
+else
+  printf 'skip pi clean filter: not a git checkout\n'
+fi
+
+# pi's theme, vendored byte-for-byte from folke/tokyonight.nvim at
+# extras/pi/tokyonight_night.json and owned from here on. No refresh task: a
+# colour file has no upstream fixes worth chasing.
+#
+# The name is "Tokyo Night", not the file's stem. pi registers a custom theme
+# under the `name` inside the JSON and ignores the filename, so the settings key
+# has to carry that string; upstream names only the other three variants after
+# themselves. The two are asserted equal below, which is the assertion that
+# actually decides whether pi opens themed or on its default.
+#
+# userMessageBg is what separates Night from Storm and Moon, and bashMode is the
+# last key in the file, so a truncated fetch cannot pass. The repo has shipped a
+# theme through a markdown converter with every glyph dropped once already.
+probe_yaml "pi theme" home/.pi/agent/themes/tokyonight_night.json '{
+  "name": "Tokyo Night",
+  "colors.accent": "#7aa2f7",
+  "colors.userMessageBg": "#16161e",
+  "colors.bashMode": "#ff9e64"
+}'
+
+# The count and the cross-file link, neither of which probe_yaml can say. The
+# names are pi 0.85.1's own required set out of modes/interactive/theme/
+# theme-json.js; a theme missing one loads as an error, not a fallback. Names
+# rather than a count, so a misspelled token cannot pass by keeping the total
+# right, and the five pi marks optional are allowed rather than demanded.
+SETTINGS=$(yq -p yaml -o json home/.pi/agent/settings.json) \
+THEME=$(yq -p yaml -o json home/.pi/agent/themes/tokyonight_night.json) \
+python3 - <<'PITHEME' || fail "pi theme tokens"
+import sys, os, json
+
+REQUIRED = set("""
+accent border borderAccent borderMuted success error warning muted dim text
+thinkingText selectedBg userMessageBg userMessageText customMessageBg
+customMessageText customMessageLabel toolPendingBg toolSuccessBg toolErrorBg
+toolTitle toolOutput mdHeading mdLink mdLinkUrl mdCode mdCodeBlock
+mdCodeBlockBorder mdQuote mdQuoteBorder mdHr mdListBullet toolDiffAdded
+toolDiffRemoved toolDiffContext syntaxComment syntaxKeyword syntaxFunction
+syntaxVariable syntaxString syntaxNumber syntaxType syntaxOperator
+syntaxPunctuation thinkingOff thinkingMinimal thinkingLow thinkingMedium
+thinkingHigh thinkingXhigh bashMode
+""".split())
+OPTIONAL = {"scrollbarTrack", "scrollbarThumb", "searchMatchBg",
+            "searchMatchText", "thinkingMax"}
+
+theme = json.loads(os.environ["THEME"])
+settings = json.loads(os.environ["SETTINGS"])
+errs = []
+
+got = set(theme.get("colors", {}))
+for name in sorted(REQUIRED - got):
+    errs.append(f"the theme is missing the required colour token {name}")
+# Anything pi does not know is a typo in a required name or a token from a
+# newer pi, and either way the file stopped being the port that was vendored.
+for name in sorted(got - REQUIRED - OPTIONAL):
+    errs.append(f"the theme carries {name}, which pi 0.85.1 does not define")
+
+want = settings.get("theme")
+if want != theme.get("name"):
+    errs.append(f"settings ask for theme {want!r}, but the tracked theme is named "
+                f"{theme.get('name')!r}; pi resolves by name and would fall back")
+
+for e in errs:
+    print("  " + e, file=sys.stderr)
+sys.exit(1 if errs else 0)
+PITHEME
+ok "pi theme tokens"
+
+# herdr's config, validated by herdr rather than by this script. `config check`
+# has no path argument and reads $XDG_CONFIG_HOME/herdr/config.toml, so the
+# tracked file is reached through a temp XDG root holding a symlink to it.
+# Inside $tmp_home, so the trap above already cleans it up.
+if command -v herdr >/dev/null 2>&1; then
+  herdr_xdg=$tmp_home/herdr-xdg
+  mkdir -p "$herdr_xdg/herdr"
+  ln -sf "$root/config/herdr/config.toml" "$herdr_xdg/herdr/config.toml"
+  # herdr prints its diagnostics and falls back to defaults rather than dying,
+  # so the exit status is the whole signal; the output is for the reader.
+  if ! out=$(XDG_CONFIG_HOME=$herdr_xdg herdr config check 2>&1); then
+    printf '%s\n' "$out" >&2
+    fail "herdr config check rejects config/herdr/config.toml"
+  fi
+  ok "herdr config check"
+else
+  printf 'skip herdr config check: herdr is not on PATH\n'
+fi
+
+# The four Plannotator keys, by command name. `config check` passes a file whose
+# key blocks parsed and then resolved to nothing, so the names are asserted here
+# and, on a machine that has bootstrapped, against the actions the installed
+# plugin actually publishes. That second half is what turns an upstream rename
+# red instead of silent. It reads plugins.json, the registry `herdr plugin
+# install` writes, because `herdr plugin action list` needs a running server.
+herdr_json=$(yq -p toml -o json config/herdr/config.toml) \
+  || fail "config/herdr/config.toml does not parse"
+CFG_JSON=$herdr_json PLUGINS=${XDG_CONFIG_HOME:-$HOME/.config}/herdr/plugins.json \
+python3 - <<'HERDRKEYS' || fail "herdr keys"
+import sys, os, json
+
+want = {
+    "annotate.capture",
+    "annotate.copy-context",
+    "annotate.copy-archive",
+    "annotate.manage",
+}
+cfg = json.loads(os.environ["CFG_JSON"])
+errs = []
+
+blocks = cfg.get("keys", {}).get("command", [])
+got = {b.get("command") for b in blocks}
+for missing in sorted(want - got):
+    errs.append(f"config/herdr/config.toml binds no key to {missing}")
+for extra in sorted(got - want):
+    errs.append(f"config/herdr/config.toml binds {extra}, which is not one of the four")
+
+# Every block is a plugin action on a prefix key. A block that lost its type
+# would parse and then do something else entirely on the same keystroke.
+for b in blocks:
+    if b.get("type") != "plugin_action":
+        errs.append(f"{b.get('command')} is type {b.get('type')!r}, expected 'plugin_action'")
+    if not str(b.get("key", "")).startswith("prefix+"):
+        errs.append(f"{b.get('command')} is bound to {b.get('key')!r}, which leaves the prefix")
+
+path = os.environ["PLUGINS"]
+if os.path.exists(path):
+    with open(path) as fh:
+        published = {
+            f"{p['plugin_id']}.{a['id']}"
+            for p in json.load(fh)
+            for a in p.get("actions", [])
+        }
+    for gone in sorted(want - published):
+        errs.append(f"{gone} is bound here but the installed plugin publishes no such action")
+else:
+    print(f"skip herdr keys against the installed plugin: {path} is missing")
+
+for e in errs:
+    print("  " + e, file=sys.stderr)
+sys.exit(1 if errs else 0)
+HERDRKEYS
+ok "herdr keys"
+
 # The real parser, when a mise exists. This block went red on every Mac with
 # mise on it until the three tap entries left [bootstrap.packages]; see the
 # note there. It has no value as a pass/fail gate unless it can reach one.

@@ -96,12 +96,20 @@ run = [
 [tasks.setup-agents]
 description = "Install the herdr integrations, the Plannotator plugin and pi's skills package."
 # Both herdr installs refuse a symlinked directory, so ~/.claude and ~/.pi stay
-# real. Every line is a no-op the second time.
+# real. Every line is safe to rerun. Not every line is free: the plugin install
+# refetches its binary through a build hook on each run.
 run = """
   mkdir -p ~/.claude ~/.pi/agent
   herdr integration install claude
   herdr integration install pi
-  herdr plugin install plannotator/herdr-annotate/lite
+  # Pinned to a commit, not a tag: the one published tag, rust-lite-v0.1.0, runs
+  # all four actions through bun, which is in no part of this manifest and on
+  # neither Mac, so pinning there would bind four keys to commands that fail on
+  # every press. This SHA is main at plugin version 0.4.0, which fetches its own
+  # binary through a build hook. Move it by hand, which is the point.
+  # The flags follow the repo, not the subcommand: herdr 0.9.0 folds anything
+  # before the positional into the owner and exits 2.
+  herdr plugin install plannotator/herdr-annotate/lite -y --ref 7c8f5a177b8285dc56efc471ef04f7ab44a2b4b6
   pi install git:github.com/mattpocock/skills@v1.2.3
   rm -f ~/.claude/keybindings.json ~/.claude/.DS_Store ~/.claude/skills/.DS_Store
   # A local copy of unslop shadows the rules inlined into the shared
