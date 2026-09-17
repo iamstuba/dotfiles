@@ -78,6 +78,7 @@ min_version = "2026.8.15"  # last release that changed the dotfiles semantics we
 "~/.claude/settings.json" = "home/.claude/settings.json"
 "~/.pi/agent/settings.json" = "home/.pi/agent/settings.json"
 "~/.pi/agent/themes/tokyonight_night.json" = "home/.pi/agent/themes/tokyonight_night.json"
+"~/.pi/agent/extensions/herdr-blocked-bridge.ts" = "home/.pi/agent/extensions/herdr-blocked-bridge.ts"
 
 # herdr. file-level: its config directory also holds the socket, the logs,
 # session.json and the installed plugins.

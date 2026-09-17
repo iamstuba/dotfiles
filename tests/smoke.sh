@@ -952,6 +952,55 @@ sys.exit(1 if errs else 0)
 PITHEME
 ok "pi theme tokens"
 
+# The bridge extension names three strings it does not own: two pi event names
+# and herdr's event channel. Rename any of them upstream and the file still
+# loads, still parses and quietly does nothing, which is the one failure that
+# reading the file can never catch. So read them back out of the installed pi
+# and the installed herdr. Proving it really emits needs a pi TUI inside a herdr
+# pane, which a shell script cannot stand up; that half is verified by hand.
+# The manifest shape probe already fails on a [dotfiles] source that is gone,
+# so this one only has to care about what is inside the file.
+bridge=home/.pi/agent/extensions/herdr-blocked-bridge.ts
+for name in ui_prompt_start ui_prompt_end herdr:blocked; do
+  grep -q "$name" "$bridge" || fail "$bridge names no $name"
+done
+
+if command -v pi >/dev/null 2>&1; then
+  # The bin is a shim several symlinks deep; the package root is what holds the
+  # compiled event names, and it is whatever the shim finally resolves into.
+  pi_bin=$(readlink -f "$(command -v pi)" 2>/dev/null) || pi_bin=
+  pi_root=${pi_bin%/dist/*}
+  if [ -n "$pi_bin" ] && [ -d "$pi_root/dist/core" ]; then
+    for name in ui_prompt_start ui_prompt_end; do
+      grep -rq "$name" "$pi_root/dist/core" \
+        || fail "the installed pi emits no $name, so the bridge would load and do nothing"
+    done
+    ok "pi blocked bridge names"
+  else
+    printf 'skip pi blocked bridge names: no package root under %s\n' "$(command -v pi)"
+  fi
+else
+  printf 'skip pi blocked bridge names: pi is not on PATH\n'
+fi
+
+# herdr's own pi extension is the listener on the other end. It is
+# herdr-managed and untracked, so the only honest source for the channel name
+# is what `herdr integration install pi` writes. Into $tmp_home, which the trap
+# above already cleans up, and it refuses a HOME with no extensions directory.
+if command -v herdr >/dev/null 2>&1; then
+  herdr_pi=$tmp_home/herdr-pi
+  mkdir -p "$herdr_pi/.pi/agent/extensions"
+  if HOME=$herdr_pi herdr integration install pi >/dev/null 2>&1; then
+    grep -rq "herdr:blocked" "$herdr_pi/.pi/agent/extensions" \
+      || fail "the installed herdr listens for no herdr:blocked, so the bridge would emit into nothing"
+    ok "herdr blocked listener"
+  else
+    printf 'skip herdr blocked listener: herdr integration install pi failed here\n'
+  fi
+else
+  printf 'skip herdr blocked listener: herdr is not on PATH\n'
+fi
+
 # herdr's config, validated by herdr rather than by this script. `config check`
 # has no path argument and reads $XDG_CONFIG_HOME/herdr/config.toml, so the
 # tracked file is reached through a temp XDG root holding a symlink to it.
