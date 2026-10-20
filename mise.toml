@@ -10,6 +10,14 @@ min_version = "2026.8.15"  # last release that changed the dotfiles semantics we
 # No pins: brew and brew-cask ignore them. Formulae only where mise's own
 # backends cannot deliver.
 
+# Take over an app that is already in /Applications instead of replacing it.
+# A replace drops the app's privacy grants, and it cannot chown or remove a
+# root-owned bundle it moves aside. Self-updating casks are adopted as they
+# are; any other cask whose app differs from the download fails and is left
+# alone.
+[bootstrap.brew]
+adopt = true
+
 [bootstrap.packages]
 "brew:bash" = "latest"                            # bar plugins need bash 4+
 "brew:eza" = "latest"                             # aqua entry is Linux-only
