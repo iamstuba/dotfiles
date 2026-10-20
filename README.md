@@ -27,10 +27,10 @@ System Settings
 
 Vorssaint
 
-- Install the Command Bar, Clipboard history, Smooth scrolling, Scroll direction and Mouse modules. Leave the rest uninstalled.
+- In the first-run picker, skip the ready setups and tick only these features: Command Bar, Clipboard, Clean URL, Cut & paste, Quit & close protection, Smooth scrolling, Invert mouse scrolling, Disable mouse acceleration, Music app blocker, Mute microphone, Audio device priority. Leave the rest uninstalled: AeroSpace owns windows, Karabiner owns keys, mise owns installs and updates (so not Homebrew, App updates or Uninstaller), and bootstrap already sets the wallpaper and keeps Spaces in a fixed order.
 - Record Cmd+Space for the Command Bar. Spotlight's hotkey is already off.
 - Name the folders the Command Bar searches.
-- Set scroll speed and direction, and turn mouse acceleration off.
+- Set the scroll speed.
 
 Mail
 
