@@ -5,7 +5,7 @@ inspired by [nicknisi/dotfiles](https://github.com/nicknisi/dotfiles).
 
 ## Bootstrap
 
-1. In Setup Assistant: sign in to the Apple Account, decline Apple Intelligence, choose the US keyboard and nothing else, skip Siri.
+1. In Setup Assistant: sign in to the Apple Account, decline Apple Intelligence, choose the Finnish keyboard and nothing else, skip Siri.
 2. Open Terminal and run the line below. Stay for the prompts, about two minutes, then leave.
 
    ```sh
