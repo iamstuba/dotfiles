@@ -1,0 +1,9 @@
+# Repo-root half of the work overlay, read only when MISE_ENV includes "work".
+# It holds what the global overlay cannot: packages marked absent, which only
+# a file outranking mise.toml can turn off. Tools and added packages stay in
+# config/mise/config.work.toml.
+
+[bootstrap.packages]
+# Not wanted on the work Mac. Here rather than in config/mise/config.work.toml
+# because an entry there loses to mise.toml's declaration.
+"brew-cask:zen" = { state = "absent" }

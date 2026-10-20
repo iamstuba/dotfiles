@@ -73,19 +73,20 @@ if [ -z "${DOTFILES_WORK:-}" ]; then
   read -r answer
   case "$answer" in y | Y | yes) DOTFILES_WORK=1 ;; *) DOTFILES_WORK=0 ;; esac
 fi
+# Every Mac gets exactly one env: mise.personal.toml carries what a work Mac
+# must not get, since mise cannot switch off an entry mise.toml declares.
+if [ "$DOTFILES_WORK" = 1 ]; then machine_env=work; else machine_env=personal; fi
 miserc=$HOME/.config/mise/miserc.toml
-if [ "$DOTFILES_WORK" = 1 ]; then
-  if grep -qs '^env *=.*"work"' "$miserc"; then
-    :
-  elif grep -qs '^env *=' "$miserc"; then
-    # A second env key would be invalid TOML and stop mise loading config.
-    echo "install: $miserc already sets env; add \"work\" to it by hand"
-  elif [ "${DRY_RUN:-}" ]; then
-    echo "+ write env = [\"work\"] to $miserc"
-  else
-    mkdir -p "$HOME/.config/mise"
-    printf 'env = ["work"]\n' >>"$miserc"
-  fi
+if grep -qs "^env *=.*\"$machine_env\"" "$miserc"; then
+  :
+elif grep -qs '^env *=' "$miserc"; then
+  # A second env key would be invalid TOML and stop mise loading config.
+  echo "install: $miserc already sets env; add \"$machine_env\" to it by hand"
+elif [ "${DRY_RUN:-}" ]; then
+  echo "+ write env = [\"$machine_env\"] to $miserc"
+else
+  mkdir -p "$HOME/.config/mise"
+  printf 'env = ["%s"]\n' "$machine_env" >>"$miserc"
 fi
 
 # Here so the passphrase prompt is early; setup-git only generates when missing.
@@ -128,7 +129,7 @@ if [ ! -d "$DOTFILES/.git" ]; then
 fi
 
 # Config with hooks and dotfiles needs trust. --yes because mise marks bootstrap destructive.
-for f in mise.toml config/mise/config.toml config/mise/config.work.toml; do
+for f in mise.toml mise.work.toml mise.personal.toml config/mise/config.toml config/mise/config.work.toml; do
   run "$mise" trust "$DOTFILES/$f"
 done
 run "$mise" -C "$DOTFILES" bootstrap --yes

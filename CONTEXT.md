@@ -13,7 +13,7 @@ The two tracked mise config files that together declare everything the personal 
 _Avoid_: Brewfile, package list
 
 **Overlay**:
-A third mise config file beside the global one, loaded only when `MISE_ENV` names it. Holds the tools one machine group gets on top of the manifest, such as work-only apps.
+A mise config file loaded only when `MISE_ENV` names it. Every Mac names exactly one, `work` or `personal`. The global `config.work.toml` holds the tools work gets on top of the manifest; the repo-root `mise.work.toml` turns manifest packages off at work, and `mise.personal.toml` holds the dotfiles a work Mac must not get, since mise cannot switch off an entry the manifest declares.
 _Avoid_: profile, environment file, work manifest
 
 **Trust**:

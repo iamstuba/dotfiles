@@ -82,7 +82,7 @@ adopt = true
 # herdr integrations refuse a symlinked directory and setup-agents runs them.
 "~/.claude/CLAUDE.md" = "home/.agents/AGENTS.md"
 "~/.pi/agent/AGENTS.md" = "home/.agents/AGENTS.md"
-"~/.claude/settings.json" = "home/.claude/settings.json"
+# ~/.claude/settings.json is in mise.personal.toml: the work Mac keeps its own.
 "~/.pi/agent/settings.json" = "home/.pi/agent/settings.json"
 "~/.pi/agent/themes/tokyonight_night.json" = "home/.pi/agent/themes/tokyonight_night.json"
 "~/.pi/agent/extensions/herdr-blocked-bridge.ts" = "home/.pi/agent/extensions/herdr-blocked-bridge.ts"

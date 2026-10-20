@@ -41,6 +41,8 @@ command -v yq >/dev/null 2>&1 \
 root_json=$(yq -p toml -o json mise.toml) || fail "mise.toml does not parse"
 global_json=$(yq -p toml -o json config/mise/config.toml) || fail "config/mise/config.toml does not parse"
 work_json=$(yq -p toml -o json config/mise/config.work.toml) || fail "config/mise/config.work.toml does not parse"
+root_work_json=$(yq -p toml -o json mise.work.toml) || fail "mise.work.toml does not parse"
+personal_json=$(yq -p toml -o json mise.personal.toml) || fail "mise.personal.toml does not parse"
 
 # The shell area's tracked TOML, each one optional and each parsed on its own
 # so a failure names the file. Absent is the JSON null, never an empty string:
@@ -57,7 +59,7 @@ if [ -f config/tuicr/config.toml ]; then
   tuicr_json=$(yq -p toml -o json config/tuicr/config.toml) || fail "config/tuicr/config.toml does not parse"
 fi
 
-ROOT_JSON=$root_json GLOBAL_JSON=$global_json WORK_JSON=$work_json \
+ROOT_JSON=$root_json ROOT_WORK_JSON=$root_work_json PERSONAL_JSON=$personal_json GLOBAL_JSON=$global_json WORK_JSON=$work_json \
 STARSHIP_JSON=$starship_json YAZI_JSON=$yazi_json TUICR_JSON=$tuicr_json \
 python3 - <<'PY' || fail "manifest shape"
 import sys, os, json, pathlib
@@ -65,6 +67,8 @@ import sys, os, json, pathlib
 root = json.loads(os.environ["ROOT_JSON"])
 global_cfg = json.loads(os.environ["GLOBAL_JSON"])
 work = json.loads(os.environ["WORK_JSON"])
+root_work = json.loads(os.environ["ROOT_WORK_JSON"])
+personal = json.loads(os.environ["PERSONAL_JSON"])
 errs = []
 
 if "dotfiles" in global_cfg or "bootstrap" in global_cfg:
@@ -75,8 +79,25 @@ if "tools" in root:
     errs.append("repo-root file carries tools; they are only on PATH inside the clone")
 if set(work) - {"tools", "bootstrap"}:
     errs.append(f"overlay carries unexpected tables: {sorted(set(work) - {'tools', 'bootstrap'})}")
+if set(root_work) - {"bootstrap"}:
+    errs.append(f"repo-root overlay carries more than packages: {sorted(set(root_work) - {'bootstrap'})}")
+if set(root_work.get("bootstrap", {})) - {"packages"}:
+    errs.append("repo-root overlay's bootstrap carries more than packages")
+# An entry there outranks mise.toml, so it may only turn a declared package off.
+for pkg, spec in root_work.get("bootstrap", {}).get("packages", {}).items():
+    if spec != {"state": "absent"}:
+        errs.append(f"repo-root overlay entry {pkg} should only set state = \"absent\"")
+    if pkg not in root.get("bootstrap", {}).get("packages", {}):
+        errs.append(f"repo-root overlay marks {pkg} absent, which mise.toml never declares")
+# The personal overlay only adds dotfiles. One also in mise.toml would reach
+# the work Mac anyway, which is the one thing this file exists to prevent.
+if set(personal) - {"dotfiles"}:
+    errs.append(f"personal overlay carries more than dotfiles: {sorted(set(personal) - {'dotfiles'})}")
+for target in personal.get("dotfiles", {}):
+    if target in root.get("dotfiles", {}):
+        errs.append(f"{target} is in both mise.toml and mise.personal.toml, so work gets it too")
 
-for target, src in root.get("dotfiles", {}).items():
+for target, src in {**root.get("dotfiles", {}), **personal.get("dotfiles", {})}.items():
     source = src if isinstance(src, str) else src.get("source", "")
     if any(c in target + source for c in "*?["):
         errs.append(f"wildcard in dotfiles entry {target}")
@@ -202,13 +223,15 @@ echo "$out" | grep -q 'ssh-keygen' || fail "install: key generation missing"
 echo "$out" | grep -q 'bootstrap --yes' || fail "install: bootstrap command missing"
 echo "$out" | grep -q 'run setup-git' || fail "install: setup-git command missing"
 echo "$out" | grep -q 'env = \["work"\]' && fail "install: wrote the work overlay on a personal answer"
+echo "$out" | grep -q 'env = \["personal"\]' || fail "install: personal answer did not write miserc.toml"
 out=$(HOME=$tmp_home DOTFILES=$root DOTFILES_WORK=1 GIT_NAME=Test GIT_EMAIL=test@example.com GIT_PROFILES= \
   sh install.sh --dry-run) || fail "install.sh --dry-run (work)"
 echo "$out" | grep -q 'env = \["work"\]' || fail "install: work answer did not write miserc.toml"
+echo "$out" | grep -q 'env = \["personal"\]' && fail "install: wrote the personal overlay on a work answer"
 # The zsh probe below grants the same trust to its own temp HOME, so without
 # this the probe would stay green while a bootstrapped Mac went back to mise
 # warning on every shell start. Only the work answer reaches this far.
-for f in mise.toml config/mise/config.toml config/mise/config.work.toml; do
+for f in mise.toml mise.work.toml mise.personal.toml config/mise/config.toml config/mise/config.work.toml; do
   echo "$out" | grep -q "mise trust $root/$f" || fail "install: no mise trust for $f"
 done
 sh install.sh --bogus >/dev/null 2>&1 && fail "install: unknown argument accepted"
