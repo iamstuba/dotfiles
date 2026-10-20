@@ -42,10 +42,6 @@ Slack
 
 - Preferences > Appearance > Custom theme, paste `#1a1b26,#16161e,#bb9af7,#283457`.
 
-Grammarly Desktop
-
-- Open it, sign in, allow Accessibility. Add Ghostty to Settings > Block list.
-
 Handy
 
 - Open it and wait half a minute. If it dies on launch, that is issue 1643 on macOS 26: drop the cask.
