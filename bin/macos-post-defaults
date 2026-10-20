@@ -39,9 +39,11 @@ else
   echo "macos-post-defaults: no Apple Account yet, Apple Intelligence key skipped"
 fi
 
-# The five apps removable without touching SIP. GarageBand's loops are
+# The bundled apps removable without touching SIP. GarageBand's loops are
 # root-owned, so those two need sudo; nothing else in bootstrap does.
-for app in GarageBand iMovie Pages Numbers Keynote; do
+# Pages, Numbers and Keynote ship as "<name> Creator Studio" since macOS 26.
+for app in GarageBand iMovie Pages Numbers Keynote \
+  "Pages Creator Studio" "Numbers Creator Studio" "Keynote Creator Studio"; do
   if [ -d "/Applications/$app.app" ]; then run rm -rf "/Applications/$app.app"; fi
 done
 for dir in "/Library/Application Support/GarageBand" "/Library/Audio/Apple Loops"; do
