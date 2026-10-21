@@ -1384,6 +1384,116 @@ sys.exit(1 if errs else 0)
 AEROSPACE
 ok "aerospace config"
 
+# Ghostty's file, read by Ghostty. validate-config rejects an unknown key, a
+# bad enum value, an unknown theme and an unknown action, but not an unknown
+# font, so a person checks the font by hand. The cask links no binary onto
+# PATH, and outside a Ghostty window the app's own directory is not on it.
+ghostty_bin=$(command -v ghostty 2>/dev/null || true)
+if [ -z "$ghostty_bin" ] && [ -x /Applications/Ghostty.app/Contents/MacOS/ghostty ]; then
+  ghostty_bin=/Applications/Ghostty.app/Contents/MacOS/ghostty
+fi
+if [ -n "$ghostty_bin" ]; then
+  if ! out=$("$ghostty_bin" +validate-config --config-file="$root/config/ghostty/config.ghostty" 2>&1); then
+    printf '%s\n' "$out" >&2
+    fail "ghostty +validate-config rejects config/ghostty/config.ghostty"
+  fi
+  # A file symlink, the way the row links it, so config-file resolves the way
+  # it does on a real Mac. The temp HOME hides Application Support's
+  # config.ghostty, which loads after the XDG file and would win.
+  ghostty_xdg=$tmp_home/ghostty-xdg
+  mkdir -p "$ghostty_xdg/ghostty"
+  ln -sf "$root/config/ghostty/config.ghostty" "$ghostty_xdg/ghostty/config.ghostty"
+  ghostty_resolved=$(HOME=$tmp_home XDG_CONFIG_HOME=$ghostty_xdg "$ghostty_bin" +show-config 2>&1) \
+    || fail "ghostty +show-config"
+  ghostty_default=$(HOME=$tmp_home "$ghostty_bin" +show-config --default 2>&1) \
+    || fail "ghostty +show-config --default"
+  ROOT_JSON=$root_json GHOSTTY_XDG=$ghostty_xdg GHOSTTY_RESOLVED=$ghostty_resolved \
+    GHOSTTY_DEFAULT=$ghostty_default python3 - <<'GHOSTTY' || fail "ghostty config"
+import sys, os, json
+
+src = "config/ghostty/config.ghostty"
+errs = []
+
+def parse(lines):
+    pairs = []
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, _, value = line.partition("=")
+        value = value.strip()
+        if len(value) > 1 and value[0] == value[-1] == '"':
+            value = value[1:-1]
+        pairs.append((key.strip(), value))
+    return pairs
+
+# A keybind's value is trigger=action, and the trigger is what one line of
+# the file replaces, so binds are keyed by trigger and everything else by key.
+def table(pairs):
+    scalars, binds = {}, {}
+    for key, value in pairs:
+        if key == "keybind":
+            trigger, _, action = value.partition("=")
+            binds[trigger] = action
+        else:
+            scalars[key] = value
+    return scalars, binds
+
+resolved, resolved_binds = table(parse(os.environ["GHOSTTY_RESOLVED"].splitlines()))
+default, default_binds = table(parse(os.environ["GHOSTTY_DEFAULT"].splitlines()))
+with open(src) as fh:
+    tracked = parse(fh)
+
+rows = json.loads(os.environ["ROOT_JSON"]).get("dotfiles", {})
+if rows.get("~/.config/ghostty/config.ghostty") != src:
+    errs.append(f"mise.toml maps ~/.config/ghostty/config.ghostty to {rows.get('~/.config/ghostty/config.ghostty')!r}, expected {src}")
+# Ghostty still reads a plain config and loads config.ghostty after it, so a
+# second row would split the settings across two files.
+if "~/.config/ghostty/config" in rows:
+    errs.append("mise.toml links ~/.config/ghostty/config beside config.ghostty")
+
+want = {
+    "font-family": "Monaspace Neon",
+    "font-size": "12",
+    "theme": "TokyoNight Night",
+    "macos-option-as-alt": "right",
+    "macos-titlebar-style": "hidden",
+    "window-padding-x": "8",
+    "window-padding-y": "8",
+    "window-padding-balance": "true",
+    "mouse-hide-while-typing": "true",
+    "auto-update": "check",
+    "config-file": "?" + os.environ["GHOSTTY_XDG"] + "/ghostty/config.local",
+}
+for key, value in want.items():
+    if resolved.get(key) != value:
+        errs.append(f"{src}: {key} resolves to {resolved.get(key)!r}, expected {value!r}")
+# AeroSpace tiles a native tab as a window, so no key may open one.
+if resolved_binds.get("super+t") != "new_window":
+    errs.append(f"{src}: super+t is {resolved_binds.get('super+t')!r}, expected new_window")
+for trigger, action in resolved_binds.items():
+    if action == "new_tab":
+        errs.append(f"{src}: {trigger} still opens a tab")
+
+# Diff-only: a line that restates Ghostty's default is noise that hides the
+# lines that matter.
+for key, value in tracked:
+    if key == "keybind":
+        trigger, _, action = value.partition("=")
+        if default_binds.get(trigger) == action:
+            errs.append(f"{src}: keybind {trigger} restates the default {action}")
+    elif default.get(key, "") == value:
+        errs.append(f"{src}: {key} = {value} restates the default")
+
+for e in errs:
+    print("  " + e, file=sys.stderr)
+sys.exit(1 if errs else 0)
+GHOSTTY
+  ok "ghostty config"
+else
+  printf 'skip ghostty config: no Ghostty binary on PATH or in /Applications\n'
+fi
+
 # The real parser, when a mise exists. This block went red on every Mac with
 # mise on it until the three tap entries left [bootstrap.packages]; see the
 # note there. It has no value as a pass/fail gate unless it can reach one.

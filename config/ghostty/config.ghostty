@@ -1,0 +1,24 @@
+font-family = "Monaspace Neon"
+font-size = 12
+theme = TokyoNight Night
+
+# Left Option types every Finnish bracket, brace, @ and $. Right Option is
+# free, so it is Alt for zsh, Neovim and herdr.
+macos-option-as-alt = right
+
+# AeroSpace tiles every window, so a titlebar only costs rows.
+macos-titlebar-style = hidden
+window-padding-x = 8
+window-padding-y = 8
+window-padding-balance = true
+mouse-hide-while-typing = true
+
+# mise skips a running Ghostty, and the update task runs inside it, so
+# Ghostty's own updater is the only one that ever reaches it.
+auto-update = check
+
+# AeroSpace tiles each native tab as a window, so Cmd+T opens a window.
+keybind = super+t=new_window
+
+# Machine-specific lines, untracked. Loads after this file, so it wins.
+config-file = ?./config.local

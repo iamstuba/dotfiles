@@ -90,6 +90,9 @@ adopt = true
 # session.json and the installed plugins.
 "~/.config/herdr/config.toml" = "config/herdr/config.toml"
 
+# file-level, so the untracked config.local beside it stays out of the clone.
+"~/.config/ghostty/config.ghostty" = "config/ghostty/config.ghostty"
+
 # A directory symlink, because Karabiner watches the directory, not the file.
 "~/.config/karabiner" = "config/karabiner"
 
