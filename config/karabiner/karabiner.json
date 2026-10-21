@@ -1,0 +1,58 @@
+{
+    "global": { "show_in_menu_bar": false },
+    "profiles": [
+        {
+            "name": "Default profile",
+            "selected": true,
+            "virtual_hid_keyboard": { "keyboard_type_v2": "iso" },
+            "devices": [
+                {
+                    "identifiers": { "is_keyboard": true },
+                    "swap_grave_accent_and_non_us_backslash": true
+                }
+            ],
+            "complex_modifications": {
+                "parameters": {
+                    "basic.to_if_alone_timeout_milliseconds": 200,
+                    "basic.to_if_held_down_threshold_milliseconds": 200
+                },
+                "rules": [
+                    {
+                        "description": "Caps Lock: Escape on tap, Control on hold",
+                        "manipulators": [
+                            {
+                                "type": "basic",
+                                "from": { "key_code": "caps_lock", "modifiers": { "optional": ["any"] } },
+                                "to": [{ "key_code": "left_control" }],
+                                "to_if_alone": [{ "key_code": "escape" }]
+                            }
+                        ]
+                    },
+                    {
+                        "description": "Shift+§ types ~",
+                        "manipulators": [
+                            {
+                                "type": "basic",
+                                "from": { "key_code": "grave_accent_and_tilde", "modifiers": { "mandatory": ["shift"] } },
+                                "to": [
+                                    { "key_code": "close_bracket", "modifiers": ["left_option"] },
+                                    { "key_code": "spacebar" }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "description": "§ types a backtick",
+                        "manipulators": [
+                            {
+                                "type": "basic",
+                                "from": { "key_code": "grave_accent_and_tilde" },
+                                "to": [{ "key_code": "equal_sign", "modifiers": ["left_shift", "left_option"] }]
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    ]
+}

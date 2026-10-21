@@ -1108,6 +1108,94 @@ sys.exit(1 if errs else 0)
 HERDRKEYS
 ok "herdr keys"
 
+# Karabiner's file is read as parsed JSON, since Karabiner may rewrite it with
+# its own key order and indentation. Nothing here can press a key, so only
+# typing on the board by hand proves that it types its keycaps.
+#
+# The § key is grave_accent_and_tilde only after the built-in swap runs, and
+# Karabiner runs that swap before complex rules. Without the swap entry the
+# same rules land on <>, so this probe checks the two together. right_option
+# is Ghostty's Alt, and a rule emitting it turns a backtick into an Alt
+# sequence, so the raw text may not name it at all, descriptions included.
+[ -f config/karabiner/karabiner.json ] || fail "karabiner config: config/karabiner/karabiner.json is missing"
+ROOT_JSON=$root_json python3 - <<'KARABINER' || fail "karabiner config"
+import sys, os, json
+
+src = "config/karabiner/karabiner.json"
+errs = []
+with open(src) as fh:
+    text = fh.read()
+cfg = json.loads(text)
+
+row = json.loads(os.environ["ROOT_JSON"]).get("dotfiles", {}).get("~/.config/karabiner")
+if row != "config/karabiner":
+    errs.append(f"mise.toml maps ~/.config/karabiner to {row!r}, expected the directory config/karabiner")
+
+if cfg.get("global", {}).get("show_in_menu_bar") is not False:
+    errs.append(f"{src}: global.show_in_menu_bar is not false")
+if "right_option" in text:
+    errs.append(f"{src}: names right_option, which is Ghostty's Alt")
+
+profiles = cfg.get("profiles", [])
+if len(profiles) != 1:
+    errs.append(f"{src}: {len(profiles)} profiles, expected 1")
+profile = profiles[0] if profiles else {}
+if profile.get("selected") is not True:
+    errs.append(f"{src}: the profile is not selected")
+if profile.get("virtual_hid_keyboard", {}).get("keyboard_type_v2") != "iso":
+    errs.append(f"{src}: keyboard_type_v2 is not iso")
+
+# One entry, the built-in board. An external board gets its own entry the day
+# the user buys one.
+devices = profile.get("devices", [])
+if len(devices) != 1 or devices[0].get("identifiers") != {"is_keyboard": True} \
+        or devices[0].get("swap_grave_accent_and_non_us_backslash") is not True:
+    errs.append(f"{src}: devices is {devices!r}, expected only the built-in swap entry")
+
+mods = profile.get("complex_modifications", {})
+params = mods.get("parameters", {})
+for key in ("basic.to_if_alone_timeout_milliseconds", "basic.to_if_held_down_threshold_milliseconds"):
+    if params.get(key) != 200:
+        errs.append(f"{src}: {key} is {params.get(key)!r}, expected 200")
+
+rules = mods.get("rules", [])
+if len(rules) != 3:
+    errs.append(f"{src}: {len(rules)} rules, expected Caps Lock, Shift+§ and §")
+else:
+    def sole_manipulator(rule):
+        found = rule.get("manipulators", [])
+        if len(found) != 1:
+            errs.append(f"{src}: rule {rule.get('description')!r} has {len(found)} manipulators, expected 1")
+            return {}
+        return found[0]
+    caps, shifted, bare = (sole_manipulator(r) for r in rules)
+    # optional any keeps Shift+Caps and Command+Caps working.
+    if caps.get("from") != {"key_code": "caps_lock", "modifiers": {"optional": ["any"]}} \
+            or caps.get("to") != [{"key_code": "left_control"}] \
+            or caps.get("to_if_alone") != [{"key_code": "escape"}]:
+        errs.append(f"{src}: the first rule is not Caps Lock to left_control, Escape alone")
+    # Karabiner takes the first match, so Shift+§ has to come before bare §.
+    for m, name in ((shifted, "second"), (bare, "third")):
+        if m.get("from", {}).get("key_code") != "grave_accent_and_tilde":
+            errs.append(f"{src}: the {name} rule is not on § (grave_accent_and_tilde)")
+    if shifted.get("from", {}).get("modifiers") != {"mandatory": ["shift"]}:
+        errs.append(f"{src}: the second rule does not require Shift")
+    if "modifiers" in bare.get("from", {}):
+        errs.append(f"{src}: the third rule takes modifiers, so it shadows Option+§ or Command+§")
+    # Option+¨ is the dead tilde that Space commits, and Shift+Option+´ is a
+    # direct backtick on Finnish.
+    if shifted.get("to") != [{"key_code": "close_bracket", "modifiers": ["left_option"]},
+                             {"key_code": "spacebar"}]:
+        errs.append(f"{src}: Shift+§ does not emit left Option+¨ then Space")
+    if bare.get("to") != [{"key_code": "equal_sign", "modifiers": ["left_shift", "left_option"]}]:
+        errs.append(f"{src}: § does not emit left Shift+Option+´")
+
+for e in errs:
+    print("  " + e, file=sys.stderr)
+sys.exit(1 if errs else 0)
+KARABINER
+ok "karabiner config"
+
 # The real parser, when a mise exists. This block went red on every Mac with
 # mise on it until the three tap entries left [bootstrap.packages]; see the
 # note there. It has no value as a pass/fail gate unless it can reach one.
