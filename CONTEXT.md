@@ -69,7 +69,7 @@ The macOS defaults changes and removable Apple app deletions bootstrap applies. 
 _Avoid_: debloat, hardening
 
 **Input source**:
-The macOS keyboard layout every Mac types with. Finnish. Whether it becomes the only input source, and which keys get remapped, is still open.
+The macOS keyboard layout every Mac types with. Stock Finnish, picked in Setup Assistant. Left Option types characters and right Option is the terminal's Alt.
 _Avoid_: keyboard layout, keymap
 
 **Base**:
