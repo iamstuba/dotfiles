@@ -1,19 +1,19 @@
 # Dotfiles
 
-Configuration and setup for a personal Mac, reproducible from a fresh install.
+Configuration and setup for a personal Mac and the work Mac, each reproducible from a fresh install.
 
 ## Language
 
-**Personal machine**:
-Any Mac this repo bootstraps. The personal MacBook is the primary target; the work laptop runs the same repo. Identity, secrets and paths that belong to one machine or employer never enter tracked files.
-_Avoid_: laptop, host, work machine
+**Mac**:
+Any Mac this repo bootstraps. Each is either a personal Mac or the work Mac, as the installer's work question records in the `personal` or `work` env. Identity, secrets and paths that belong to one Mac or employer never enter tracked files.
+_Avoid_: laptop, host, machine, personal machine
 
 **Manifest**:
-The two tracked mise config files that together declare everything the personal machine gets. The global file (`config/mise/config.toml`, symlinked) holds tools and settings; the repo-root `mise.toml` holds packages, the symlink map, macOS defaults and hooks. Both hold tasks, split by whether the task can reach the repo through `{{ config_root }}`: the global file is read from outside the clone, so tasks there cannot.
+The two tracked mise config files that together declare what every Mac gets. The global file (`config/mise/config.toml`, symlinked) holds tools and settings; the repo-root `mise.toml` holds packages, the symlink map, macOS defaults and hooks. Both hold tasks, split by whether the task can reach the repo through `{{ config_root }}`: the global file is read from outside the clone, so tasks there cannot.
 _Avoid_: Brewfile, package list
 
 **Overlay**:
-A mise config file loaded only when `MISE_ENV` names it. Every Mac names exactly one, `work` or `personal`. The global `config.work.toml` holds the tools work gets on top of the manifest; the repo-root `mise.work.toml` turns manifest packages off at work, and `mise.personal.toml` holds the dotfiles a work Mac must not get, since mise cannot switch off an entry the manifest declares.
+A mise config file loaded only when `MISE_ENV` names it. Every Mac names exactly one, `work` or `personal`. The global `config.work.toml` holds the tools work gets on top of the manifest; the repo-root `mise.work.toml` turns manifest packages off at work, and `mise.personal.toml` holds the dotfiles and hooks a work Mac must not get, since mise cannot switch off an entry the manifest declares.
 _Avoid_: profile, environment file, work manifest
 
 **Trust**:
@@ -33,7 +33,7 @@ The one-line `bash -c "$(curl ...)"` script that takes a fresh Mac through boots
 _Avoid_: setup script, curl-pipe-bash
 
 **Attended phase**:
-The first minutes of the installer, where a human types the password, logs into GitHub, answers identity questions, says whether this is a work machine and lets the SSH key into the keychain.
+The first minutes of the installer, where a human types the password, logs into GitHub, answers identity questions, says whether this is the work Mac and lets the SSH key into the keychain.
 _Avoid_: interactive part
 
 **Unattended phase**:
@@ -65,11 +65,11 @@ An AeroSpace virtual desktop, addressed by a key and holding one or two windows.
 _Avoid_: space, desktop, screen
 
 **Bloat removal**:
-The macOS defaults changes and removable Apple app deletions bootstrap applies. Never disables SIP or launch services.
+The macOS defaults changes and removable Apple app deletions bootstrap applies. The app deletions run on a personal Mac only. Never disables SIP or launch services.
 _Avoid_: debloat, hardening
 
 **Input source**:
-The macOS keyboard layout the personal machine types with. US, and only US.
+The macOS keyboard layout every Mac types with. Finnish. Whether it becomes the only input source, and which keys get remapped, is still open.
 _Avoid_: keyboard layout, keymap
 
 **Base**:
@@ -109,7 +109,7 @@ The unit implementation runs in, one at a time: the files owned by a single tool
 _Avoid_: feature, epic, milestone
 
 **Rehearsal**:
-`mise bootstrap --dry-run` on the personal machine before the first real bootstrap. Prints hook bodies without running them, so everything the pre-packages hook installs and the post-defaults hook go untried by the rehearsal itself.
+`mise bootstrap --dry-run` on a Mac before its first real bootstrap. Prints hook bodies without running them, so everything the pre-packages hook installs and the post-defaults hooks go untried by the rehearsal itself.
 _Avoid_: trial, test run
 
 **Smoke test**:
@@ -125,9 +125,9 @@ The field on Cmd+Space that opens apps, pastes from clipboard history and answer
 _Avoid_: Spotlight, Raycast, search bar
 
 **Daily browser**:
-LibreWolf. Holds the personal session and everything that is not work. Its prefs and its enterprise policies are tracked; the cookie exceptions that survive its shutdown clearing are not.
+LibreWolf, the browser on a personal Mac. Holds the personal session and everything that is not work. Its prefs and its enterprise policies are tracked; the cookie exceptions that survive its shutdown clearing are not.
 _Avoid_: main browser, default browser, Zen
 
 **Work browser**:
-Helium. Holds the work session and the work password manager, and is where Chrome DevTools work happens, since no Gecko browser has an equivalent. In the manifest rather than the overlay, because the devtools half is needed on every personal machine.
-_Avoid_: second browser, devtools browser, Chromium
+Chrome, the only browser on the work Mac. Holds the work session and the work password manager.
+_Avoid_: second browser, devtools browser, Chromium, Helium
