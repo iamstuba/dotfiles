@@ -66,7 +66,7 @@ import sys, os, json, pathlib
 
 root = json.loads(os.environ["ROOT_JSON"])
 global_cfg = json.loads(os.environ["GLOBAL_JSON"])
-work = json.loads(os.environ["WORK_JSON"])
+work = json.loads(os.environ["WORK_JSON"]) or {}  # yq reads an empty file as null
 root_work = json.loads(os.environ["ROOT_WORK_JSON"])
 personal = json.loads(os.environ["PERSONAL_JSON"])
 errs = []
@@ -1223,11 +1223,13 @@ tools_in() {
   # One [tools] key per line. Strict: an unrecognised line is a failure, never
   # a skip, because a silently dropped tool is the failure this block exists to
   # catch. Verified against tomllib on both tracked files, keys and order.
-  awk '
+  # A second argument lets the file have no [tools] table at all, which the
+  # work overlay may; a table that yields nothing still fails.
+  awk -v optional="${2:-}" '
     /^[[:space:]]*\[/ {
       h = $0
       sub(/[[:space:]]*#.*$/, "", h); sub(/^[[:space:]]+/, "", h); sub(/[[:space:]]+$/, "", h)
-      if (h == "[tools]") { intools = 1; next }
+      if (h == "[tools]") { intools = 1; seen = 1; next }
       # [tools.foo] declares a tool the flat scan below would never see.
       if (h ~ /^\[tools\./) {
         printf "  %s:%d: sub-table %s; this reads flat keys only\n", FILENAME, FNR, h > "/dev/stderr"
@@ -1251,7 +1253,7 @@ tools_in() {
       bad = 1
     }
     END {
-      if (n == 0) {
+      if (n == 0 && !(optional && !seen)) {
         printf "  %s: [tools] yielded no keys; the table moved or the file is unreadable\n", FILENAME > "/dev/stderr"
         bad = 1
       }
@@ -1308,7 +1310,6 @@ npm:bash-language-server bash-language-server
 herdr herdr
 claude claude
 pi pi
-lazydocker lazydocker
 MAP
 }
 
@@ -1325,9 +1326,9 @@ tools_cmds() {
 # disease this block was written to cure: a check that has never once run on
 # the machine it was written on.
 tools_keys=$(tools_in config/mise/config.toml) || fail "tools: config/mise/config.toml"
-work_keys=$(tools_in config/mise/config.work.toml) || fail "tools: config/mise/config.work.toml"
-all_keys="$tools_keys
-$work_keys"
+work_keys=$(tools_in config/mise/config.work.toml optional) || fail "tools: config/mise/config.work.toml"
+all_keys=$tools_keys${work_keys:+
+$work_keys}
 
 drift=
 for key in $all_keys; do
