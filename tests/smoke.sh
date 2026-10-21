@@ -1462,6 +1462,7 @@ want = {
     "window-padding-y": "8",
     "window-padding-balance": "true",
     "mouse-hide-while-typing": "true",
+    "copy-on-select": "clipboard",
     "auto-update": "check",
     "config-file": "?" + os.environ["GHOSTTY_XDG"] + "/ghostty/config.local",
 }

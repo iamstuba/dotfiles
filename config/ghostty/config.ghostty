@@ -13,6 +13,10 @@ window-padding-y = 8
 window-padding-balance = true
 mouse-hide-while-typing = true
 
+# On macOS, true never reaches the system clipboard, so Cmd+V and pbpaste
+# would not see a selection.
+copy-on-select = clipboard
+
 # mise skips a running Ghostty, and the update task runs inside it, so
 # Ghostty's own updater is the only one that ever reaches it.
 auto-update = check
