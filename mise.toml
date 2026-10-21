@@ -40,7 +40,6 @@ adopt = true
 "brew-cask:thunderbird" = "latest"
 "brew-cask:proton-mail-bridge" = "latest"
 "brew-cask:vorssaint" = "latest"
-"brew-cask:handy" = "latest"
 "brew-cask:font-monaspace" = "latest"
 "brew-cask:font-symbols-only-nerd-font" = "latest"
 "brew-cask:font-sketchybar-app-font" = "latest"

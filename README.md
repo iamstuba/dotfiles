@@ -42,12 +42,6 @@ Slack
 
 - Preferences > Appearance > Custom theme, paste `#1a1b26,#16161e,#bb9af7,#283457`.
 
-Handy
-
-- Open it and wait half a minute. If it dies on launch, that is issue 1643 on macOS 26: drop the cask.
-- Allow Microphone and Accessibility. Download the Parakeet V3 model, set language to auto.
-- Add odd identifiers as custom words. Hold Option+Space and dictate one prompt into a Claude Code pane.
-
 Extra GitHub accounts
 
 - Register `~/.ssh/id_ed25519_github.pub` once per account, as an authentication key and as a signing key.
