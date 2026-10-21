@@ -6,6 +6,10 @@
 
 Issues live as local markdown files under `.scratch/`. See `docs/agents/issue-tracker.md`.
 
+`.scratch/` is its own git repo, a clone of the private `dotfiles-scratch`, and
+this repo ignores it. Commit and push issue and spec changes there with
+`git -C .scratch`. Never force-add them here.
+
 ### Triage labels
 
 Default vocabulary: needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix. See `docs/agents/triage-labels.md`.
