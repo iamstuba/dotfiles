@@ -35,7 +35,7 @@ ask() {
 
 say "Attended phase: a few prompts, then you can leave."
 
-# One password covers the CLT, /opt/homebrew and the GarageBand deletion.
+# One password covers the CLT, /opt/homebrew and, on a personal Mac, the GarageBand loops.
 run sudo -v
 if [ -z "${DRY_RUN:-}" ]; then
   while kill -0 "$$" 2>/dev/null; do sudo -n true 2>/dev/null || true; sleep 60; done &

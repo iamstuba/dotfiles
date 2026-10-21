@@ -95,7 +95,7 @@ file does not exist, and `mise run check` warns when it finds one.
 - `mise.toml`: packages, symlink map, macOS defaults, hooks, repo-bound tasks.
 - `config/mise/config.toml`: tools, settings, update tasks. Symlinked to `~/.config/mise/`.
 - `config/mise/config.work.toml`: work-only tools, loaded when `MISE_ENV` includes `work`.
-- `mise.work.toml`: packages turned off at work. `mise.personal.toml`: dotfiles a work Mac must not get. The installer sets `MISE_ENV` to exactly one of `work` and `personal`.
+- `mise.work.toml`: packages turned off at work. `mise.personal.toml`: the dotfiles and the bundled app removal a work Mac must not get. The installer sets `MISE_ENV` to exactly one of `work` and `personal`.
 - `config/`: mirrors `~/.config`. `home/`: top-level dotfiles. `bin/`: scripts on PATH.
 - `install.sh`, `tests/smoke.sh`, `assets/`.
 

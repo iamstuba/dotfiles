@@ -89,10 +89,16 @@ for pkg, spec in root_work.get("bootstrap", {}).get("packages", {}).items():
         errs.append(f"repo-root overlay entry {pkg} should only set state = \"absent\"")
     if pkg not in root.get("bootstrap", {}).get("packages", {}):
         errs.append(f"repo-root overlay marks {pkg} absent, which mise.toml never declares")
-# The personal overlay only adds dotfiles. One also in mise.toml would reach
-# the work Mac anyway, which is the one thing this file exists to prevent.
-if set(personal) - {"dotfiles"}:
-    errs.append(f"personal overlay carries more than dotfiles: {sorted(set(personal) - {'dotfiles'})}")
+# The personal overlay adds dotfiles and hooks. One also in mise.toml would
+# reach the work Mac anyway, which is the one thing this file exists to prevent.
+if set(personal) - {"dotfiles", "bootstrap"}:
+    errs.append(f"personal overlay carries unexpected tables: {sorted(set(personal) - {'dotfiles', 'bootstrap'})}")
+if set(personal.get("bootstrap", {})) - {"hooks"}:
+    errs.append("personal overlay's bootstrap carries more than hooks")
+if "remove-bundled-apps" not in json.dumps(personal.get("bootstrap", {}).get("hooks", {})):
+    errs.append("personal overlay no longer runs remove-bundled-apps")
+if "remove-bundled-apps" in json.dumps(root.get("bootstrap", {}).get("hooks", {})):
+    errs.append("mise.toml runs remove-bundled-apps, so the work Mac loses its apps too")
 for target in personal.get("dotfiles", {}):
     if target in root.get("dotfiles", {}):
         errs.append(f"{target} is in both mise.toml and mise.personal.toml, so work gets it too")
@@ -186,6 +192,10 @@ echo "$out" | grep -q 'persistent-apps -array' || fail "post-defaults: Dock arra
 echo "$out" | grep -q 'dict-add 64 ' || fail "post-defaults: hotkey 64 missing"
 echo "$out" | grep -q 'dict-add 65 ' || fail "post-defaults: hotkey 65 missing"
 ok "macos-post-defaults --dry-run"
+
+HOME=$tmp_home sh bin/remove-bundled-apps --dry-run >/dev/null || fail "remove-bundled-apps --dry-run"
+sh bin/remove-bundled-apps --bogus >/dev/null 2>&1 && fail "remove-bundled-apps: unknown argument accepted"
+ok "remove-bundled-apps --dry-run"
 
 # The tap packages, which mise cannot resolve and so never appears in the
 # bootstrap plan beyond the hook line that calls this. This script is the only

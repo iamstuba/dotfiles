@@ -1,10 +1,13 @@
 # Personal overlay, read only when MISE_ENV includes "personal". The installer
 # writes env = ["personal"] or env = ["work"] to ~/.config/mise/miserc.toml,
-# so every Mac loads exactly one of the two. It holds the dotfiles a work Mac
-# must not get, because mise has no way to switch off an entry mise.toml
-# declares.
+# so every Mac loads exactly one of the two. It holds what a work Mac must
+# not get, because mise has no way to switch off an entry mise.toml declares.
 
 [dotfiles]
 # The work Mac keeps its own untracked copy: tools there write into this
 # file, and a symlink would send those writes into the tracked one.
 "~/.claude/settings.json" = "home/.claude/settings.json"
+
+# Runs after mise.toml's post-defaults hook: hooks from every loaded file run.
+[bootstrap.hooks.post-defaults]
+run = "{{ config_root }}/bin/remove-bundled-apps"  # absolute: a bare path would follow the caller's cwd
