@@ -11,8 +11,8 @@ start-at-login = true
 # The file links into the clone, so saving it there applies it.
 auto-reload-config = true
 
-# Empty workspaces stay alive, so the bar always shows four.
-persistent-workspaces = ['1', '2', '3', '4']
+# Empty workspaces stay alive, so the bar always shows five.
+persistent-workspaces = ['1', '2', '3', '4', '5']
 
 on-focused-monitor-changed = ['move-mouse monitor-lazy-center']
 
@@ -42,11 +42,13 @@ alt-q = 'workspace 1'
 alt-w = 'workspace 2'
 alt-e = 'workspace 3'
 alt-r = 'workspace 4'
+alt-t = 'workspace 5'
 
 alt-shift-q = 'move-node-to-workspace --focus-follows-window 1'
 alt-shift-w = 'move-node-to-workspace --focus-follows-window 2'
 alt-shift-e = 'move-node-to-workspace --focus-follows-window 3'
 alt-shift-r = 'move-node-to-workspace --focus-follows-window 4'
+alt-shift-t = 'move-node-to-workspace --focus-follows-window 5'
 
 alt-tab = 'workspace-back-and-forth'
 alt-shift-f = 'fullscreen'
@@ -71,11 +73,11 @@ if = 'test %{app-bundle-id} = org.mozilla.thunderbird || test %{app-bundle-id} =
 run = 'move-node-to-workspace 1'
 
 [[on-window-detected]]
-if = 'test %{app-bundle-id} = com.mitchellh.ghostty'
+if = 'test %{app-bundle-id} = net.librewolf.librewolf || test %{app-bundle-id} = com.google.Chrome'
 run = 'move-node-to-workspace 2'
 
 [[on-window-detected]]
-if = 'test %{app-bundle-id} = net.librewolf.librewolf || test %{app-bundle-id} = com.google.Chrome'
+if = 'test %{app-bundle-id} = com.mitchellh.ghostty'
 run = 'move-node-to-workspace 3'
 
 # Everything else floats on the current workspace.

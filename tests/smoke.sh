@@ -1248,9 +1248,9 @@ for key in ("start-at-login", "auto-reload-config"):
     if cfg.get(key) is not True:
         errs.append(f"{src}: {key} is not true")
 # Under config-version 2 only a listed workspace survives being empty, and the
-# bar draws all four.
-if cfg.get("persistent-workspaces") != ["1", "2", "3", "4"]:
-    errs.append(f"{src}: persistent-workspaces is {cfg.get('persistent-workspaces')!r}, expected 1 to 4")
+# bar draws all five.
+if cfg.get("persistent-workspaces") != ["1", "2", "3", "4", "5"]:
+    errs.append(f"{src}: persistent-workspaces is {cfg.get('persistent-workspaces')!r}, expected 1 to 5")
 
 # The file is diff-only. These keys would only restate AeroSpace's fallback,
 # and there is no [exec] table because its default PATH already finds borders.
@@ -1270,11 +1270,13 @@ want_main = {
     "alt-shift-h": "move left", "alt-shift-j": "move down",
     "alt-shift-k": "move up", "alt-shift-l": "move right",
     "alt-minus": "resize smart -50", "alt-equal": "resize smart +50",
-    "alt-q": "workspace 1", "alt-w": "workspace 2", "alt-e": "workspace 3", "alt-r": "workspace 4",
+    "alt-q": "workspace 1", "alt-w": "workspace 2", "alt-e": "workspace 3",
+    "alt-r": "workspace 4", "alt-t": "workspace 5",
     "alt-shift-q": "move-node-to-workspace --focus-follows-window 1",
     "alt-shift-w": "move-node-to-workspace --focus-follows-window 2",
     "alt-shift-e": "move-node-to-workspace --focus-follows-window 3",
     "alt-shift-r": "move-node-to-workspace --focus-follows-window 4",
+    "alt-shift-t": "move-node-to-workspace --focus-follows-window 5",
     "alt-tab": "workspace-back-and-forth",
     "alt-shift-f": "fullscreen",
     "alt-shift-semicolon": "mode service",
@@ -1332,8 +1334,8 @@ if callbacks and (callbacks[-1].get("if") != "true" or callbacks[-1].get("run") 
     errs.append(f"{src}: the last window callback is not if = 'true', run = 'layout floating'")
 # The whole if string, so a changed joiner or a trailing && false cannot pass.
 want_routes = [(["org.mozilla.thunderbird", "com.tinyspeck.slackmacgap"], "1"),
-               (["com.mitchellh.ghostty"], "2"),
-               (["net.librewolf.librewolf", "com.google.Chrome"], "3")]
+               (["net.librewolf.librewolf", "com.google.Chrome"], "2"),
+               (["com.mitchellh.ghostty"], "3")]
 for i, (ids, ws) in enumerate(want_routes):
     cb = callbacks[i] if i < len(callbacks) else {}
     want_if = " || ".join(f"test %{{app-bundle-id}} = {app}" for app in ids)
