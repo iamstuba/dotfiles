@@ -7,6 +7,9 @@ export XDG_CONFIG_HOME="$HOME/.config"
 # Moves .zshrc into config/zsh, and is what makes lazygit and glow read
 # ~/.config on macOS instead of inventing their own paths.
 export ZDOTDIR="$XDG_CONFIG_HOME/zsh"
+# Terminal.app, used only during bootstrap, writes session files under ZDOTDIR,
+# which is the repo, and its path cannot be redirected the way HISTFILE can.
+export SHELL_SESSIONS_DISABLE=1
 
 # ${(%):-%N} is the path of the file being sourced, which is the ~/.zshenv
 # symlink. Resolving it and stepping up out of home/ finds the clone wherever
