@@ -6,6 +6,12 @@ set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 
+# mise looks for config in every directory above the one it runs in, and a
+# clone under a bootstrapped HOME has ~/.config/mise/config.toml above it. A
+# temp HOME does not hide that file, so every mise run below that is meant to
+# see only this repo stops its search here.
+mise_ceiling=$(dirname "$root")
+
 fail() { printf 'FAIL %s\n' "$*" >&2; exit 1; }
 ok() { printf 'ok   %s\n' "$*"; }
 
@@ -276,7 +282,7 @@ if command -v zsh >/dev/null 2>&1; then
     # root and nothing under it. install.sh names the two configs in
     # config/mise as well; this HOME links neither, so the probe never loads
     # them. Captured because mise reports success on stderr too.
-    trust_out=$(HOME=$zsh_home MISE_STATE_DIR=$mise_state \
+    trust_out=$(HOME=$zsh_home MISE_STATE_DIR=$mise_state MISE_CEILING_PATHS=$mise_ceiling \
       mise trust "$root/mise.toml" 2>&1) \
       || fail "mise trust failed against the probe's HOME: $trust_out"
   fi
@@ -290,10 +296,18 @@ if command -v zsh >/dev/null 2>&1; then
   # `mise run check`, and zsh reads $ZDOTDIR/.zshenv in preference to
   # $HOME/.zshenv, so leaving it set tests the caller's install, not this one.
   # MISE_STATE_DIR is pinned for the same reason: the mise this shell activates
-  # has to read the trust granted above and not the caller's.
+  # has to read the trust granted above and not the caller's. The ceiling stops
+  # it finding the caller's global config by searching the clone's parents.
+  #
+  # The caller's mise tool directories and shims come off PATH for the same
+  # reason. This shell's mise reads no config that names those tools, so a shim
+  # found on PATH errors on stderr the moment .zshrc runs it.
+  #
   # The output is cut into labelled sections, so an alias cannot satisfy an
   # assertion meant for a key binding.
-  out=$(unset ZDOTDIR; HOME=$zsh_home MISE_STATE_DIR=$mise_state zsh -i -c '
+  mise_data=${MISE_DATA_DIR:-$HOME/.local/share/mise}
+  probe_path=$(printf '%s\n' "$PATH" | tr : '\n' | grep -v "^$mise_data/" | paste -sd : -)
+  out=$(unset ZDOTDIR; PATH=$probe_path HOME=$zsh_home MISE_STATE_DIR=$mise_state MISE_CEILING_PATHS=$mise_ceiling zsh -i -c '
     echo "### env";       printenv
     echo "### histfile";  echo "HISTFILE=$HISTFILE"
     # Physical, because ZDOTDIR reaches the repo through a symlink and the
@@ -1214,8 +1228,10 @@ if command -v mise >/dev/null 2>&1; then
   # HOME alone does not make it fresh. .zshenv exports XDG_CONFIG_HOME as an
   # absolute path, so both runs below would inherit the caller's and read the
   # real ~/.config/mise/config.toml through it. Measured: with it set,
-  # `mise config ls` lists that file and all 30 of its tools; unset, only this
-  # repo's mise.toml. Unset for the same reason the bat probe unsets it.
+  # `mise config ls` lists that file and all 30 of its tools. Unset for the
+  # same reason the bat probe unsets it. Unsetting it is not enough on its own,
+  # since mise still finds the same file by searching the clone's parents, so
+  # both runs also take the ceiling set at the top of this file.
   #
   # MISE_TRUSTED_CONFIG_PATHS goes with it. This repo does not grant trust
   # through that variable, and inherited it would grant trust anyway: an
@@ -1228,13 +1244,14 @@ if command -v mise >/dev/null 2>&1; then
   # read, so a missing grant cannot become a pass that asserted nothing.
   dry_state=$mise_home/.local/state/mise
   dry_trust=$(unset XDG_CONFIG_HOME MISE_TRUSTED_CONFIG_PATHS
-              HOME=$mise_home MISE_STATE_DIR=$dry_state \
+              HOME=$mise_home MISE_STATE_DIR=$dry_state MISE_CEILING_PATHS=$mise_ceiling \
                 mise trust "$root/mise.toml" 2>&1) \
     || fail "mise trust failed against the dry run's HOME: $dry_trust"
   # mise writes the plan to stderr, three hundred lines of it against this
   # manifest, so both streams are captured and printed only on a failure.
   plan=$(unset XDG_CONFIG_HOME MISE_TRUSTED_CONFIG_PATHS
-         HOME=$mise_home MISE_STATE_DIR=$dry_state mise bootstrap --dry-run 2>&1) || {
+         HOME=$mise_home MISE_STATE_DIR=$dry_state MISE_CEILING_PATHS=$mise_ceiling \
+           mise bootstrap --dry-run 2>&1) || {
     printf '%s\n' "$plan" >&2
     fail "mise bootstrap --dry-run"
   }
