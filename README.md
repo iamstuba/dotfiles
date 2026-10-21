@@ -32,7 +32,7 @@ Vorssaint
 - Name the folders the Command Bar searches.
 - Set the scroll speed.
 
-Mail
+Mail, on a personal Mac only
 
 - Proton Mail Bridge: log in, turn on start at login.
 - Thunderbird: add the Proton account from Bridge's settings, accept the certificate exceptions; add Gmail directly.
