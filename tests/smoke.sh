@@ -1210,6 +1210,178 @@ sys.exit(1 if errs else 0)
 KARABINER
 ok "karabiner config"
 
+# AeroSpace's file, parsed and read as structure. The real parser needs the
+# server running, so a person checks by hand that AeroSpace accepts the file.
+# A config file replaces every default bind, so the bind sets are exact. A bind
+# this file leaves out does nothing.
+#
+# Borders reads its colours from the bar's palette, so this probe checks that
+# file too. It sources the palette with an empty environment, so the caller's
+# own variables cannot fill a name the file forgot.
+#
+# A missing aerospace.toml never reaches here: the manifest section above fails
+# on its row. Its row for the palette names the directory, so the file itself
+# needs the guard.
+[ -f config/sketchybar/colors.sh ] || fail "aerospace config: config/sketchybar/colors.sh is missing"
+sh -n config/sketchybar/colors.sh || fail "syntax config/sketchybar/colors.sh"
+aerospace_json=$(yq -p toml -o json config/aerospace/aerospace.toml) \
+  || fail "config/aerospace/aerospace.toml does not parse"
+ROOT_JSON=$root_json AEROSPACE_JSON=$aerospace_json python3 - <<'AEROSPACE' || fail "aerospace config"
+import sys, os, re, json, subprocess
+
+src = "config/aerospace/aerospace.toml"
+palette = "config/sketchybar/colors.sh"
+errs = []
+cfg = json.loads(os.environ["AEROSPACE_JSON"])
+with open(src) as fh:
+    text = fh.read()
+
+rows = json.loads(os.environ["ROOT_JSON"]).get("dotfiles", {})
+for target, want in (("~/.config/aerospace/aerospace.toml", src),
+                     ("~/.config/sketchybar", "config/sketchybar")):
+    if rows.get(target) != want:
+        errs.append(f"mise.toml maps {target} to {rows.get(target)!r}, expected {want}")
+
+if cfg.get("config-version") != 2:
+    errs.append(f"{src}: config-version is {cfg.get('config-version')!r}, expected 2")
+for key in ("start-at-login", "auto-reload-config"):
+    if cfg.get(key) is not True:
+        errs.append(f"{src}: {key} is not true")
+# Under config-version 2 only a listed workspace survives being empty, and the
+# bar draws all four.
+if cfg.get("persistent-workspaces") != ["1", "2", "3", "4"]:
+    errs.append(f"{src}: persistent-workspaces is {cfg.get('persistent-workspaces')!r}, expected 1 to 4")
+
+# The file is diff-only. These keys would only restate AeroSpace's fallback,
+# and there is no [exec] table because its default PATH already finds borders.
+for key in ("default-root-container-layout", "default-root-container-orientation",
+            "key-mapping", "accordion-padding", "exec",
+            "enable-normalization-flatten-containers",
+            "enable-normalization-opposite-orientation-for-nested-containers"):
+    if key in cfg:
+        errs.append(f"{src}: sets {key}, which the file leaves to AeroSpace's fallback")
+modes = cfg.get("mode", {})
+if set(modes) != {"main", "service"}:
+    errs.append(f"{src}: modes are {sorted(modes)}, expected main and service")
+
+main = modes.get("main", {}).get("binding", {})
+want_main = {
+    "alt-h": "focus left", "alt-j": "focus down", "alt-k": "focus up", "alt-l": "focus right",
+    "alt-shift-h": "move left", "alt-shift-j": "move down",
+    "alt-shift-k": "move up", "alt-shift-l": "move right",
+    "alt-minus": "resize smart -50", "alt-equal": "resize smart +50",
+    "alt-q": "workspace 1", "alt-w": "workspace 2", "alt-e": "workspace 3", "alt-r": "workspace 4",
+    "alt-shift-q": "move-node-to-workspace --focus-follows-window 1",
+    "alt-shift-w": "move-node-to-workspace --focus-follows-window 2",
+    "alt-shift-e": "move-node-to-workspace --focus-follows-window 3",
+    "alt-shift-r": "move-node-to-workspace --focus-follows-window 4",
+    "alt-tab": "workspace-back-and-forth",
+    "alt-shift-f": "fullscreen",
+    "alt-shift-semicolon": "mode service",
+}
+if main != want_main:
+    for key in sorted(set(main) | set(want_main)):
+        if main.get(key) != want_main.get(key):
+            errs.append(f"{src}: main bind {key} is {main.get(key)!r}, expected {want_main.get(key)!r}")
+# Option with a digit types @ and $ on Finnish, Alt+F is zsh's forward-word,
+# and Karabiner's § rules emit the last two chords, which AeroSpace would
+# catch before the app does.
+for key in main:
+    if re.fullmatch(r"alt-(shift-)?\d", key) \
+            or key in ("alt-f", "alt-shift-equal", "alt-rightSquareBracket"):
+        errs.append(f"{src}: main mode binds {key}, which Finnish or Karabiner needs")
+
+service = modes.get("service", {}).get("binding", {})
+want_service = {
+    "esc": ["reload-config", "mode main"],
+    "r": ["flatten-workspace-tree", "mode main"],
+    "f": ["layout floating tiling", "mode main"],
+    "backspace": ["close-all-windows-but-current", "mode main"],
+    "alt-shift-h": ["join-with left", "mode main"],
+    "alt-shift-j": ["join-with down", "mode main"],
+    "alt-shift-k": ["join-with up", "mode main"],
+    "alt-shift-l": ["join-with right", "mode main"],
+    "q": "enable off",
+}
+if service != want_service:
+    for key in sorted(set(service) | set(want_service)):
+        if service.get(key) != want_service.get(key):
+            errs.append(f"{src}: service bind {key} is {service.get(key)!r}, expected {want_service.get(key)!r}")
+if service.get("q") != "enable off":
+    errs.append(f"{src}: service q is {service.get('q')!r}, expected 'enable off'")
+# A mode command after enable registers hotkeys whose handler dies while the
+# server is off.
+for key, cmd in service.items():
+    joined = " ".join(cmd) if isinstance(cmd, list) else str(cmd)
+    if "enable" in joined and "mode" in joined:
+        errs.append(f"{src}: service bind {key} runs both enable and mode")
+# The bar subscribes to mode-changed, so this file never calls sketchybar.
+# The palette path is the one place the name may appear.
+if "sketchybar" in text.replace("~/.config/sketchybar/colors.sh", ""):
+    errs.append(f"{src}: names sketchybar outside the palette path")
+
+# First match wins, so the float rule has to be last, and 0.21.3 refuses a
+# callback with no if.
+callbacks = cfg.get("on-window-detected", [])
+if len(callbacks) != 4:
+    errs.append(f"{src}: {len(callbacks)} window callbacks, expected 4")
+for i, cb in enumerate(callbacks):
+    if "if" not in cb:
+        errs.append(f"{src}: window callback {i + 1} has no if")
+if callbacks and (callbacks[-1].get("if") != "true" or callbacks[-1].get("run") != "layout floating"):
+    errs.append(f"{src}: the last window callback is not if = 'true', run = 'layout floating'")
+# The whole if string, so a changed joiner or a trailing && false cannot pass.
+want_routes = [(["org.mozilla.thunderbird", "com.tinyspeck.slackmacgap"], "1"),
+               (["com.mitchellh.ghostty"], "2"),
+               (["net.librewolf.librewolf", "com.google.Chrome"], "3")]
+for i, (ids, ws) in enumerate(want_routes):
+    cb = callbacks[i] if i < len(callbacks) else {}
+    want_if = " || ".join(f"test %{{app-bundle-id}} = {app}" for app in ids)
+    if cb.get("if") != want_if or cb.get("run") != f"move-node-to-workspace {ws}":
+        errs.append(f"{src}: window callback {i + 1} does not send {ids} to workspace {ws}")
+for gone in ("app.zen-browser.zen", "net.imput.helium"):
+    if gone in json.dumps(callbacks):
+        errs.append(f"{src}: a window callback names {gone}, which this setup dropped")
+
+startup = cfg.get("after-startup-command", [])
+if len(startup) != 1:
+    errs.append(f"{src}: after-startup-command has {len(startup)} entries, expected 1")
+else:
+    m = re.fullmatch(r"exec-and-forget source ~/\.config/sketchybar/colors\.sh && (.*)", startup[0])
+    args = m.group(1).split() if m else []
+    if not args or args[0] != "borders" \
+            or "active_color=$ACCENT" not in args or "inactive_color=$GUTTER" not in args:
+        errs.append(f"{src}: after-startup-command does not source the palette and start borders "
+                    "with $ACCENT and $GUTTER")
+
+# The names a bare shell exports, such as PWD and SHLVL, are subtracted so
+# only the palette's own exports remain.
+def exported(script):
+    out = subprocess.run(["env", "-i", "/bin/sh", "-c", script, "sh", palette],
+                         capture_output=True, text=True)
+    if out.returncode != 0:
+        errs.append(f"{palette}: sourcing it failed: {out.stderr.strip()}")
+    return dict(line.split("=", 1) for line in out.stdout.splitlines() if "=" in line)
+colors = exported('. "./$1" && env')
+for name in exported("env"):
+    colors.pop(name, None)
+want_names = {"FG", "FG_DIM", "GREY", "GUTTER", "ACCENT", "BAR_COLOR", "ITEM_BG", "PILL_BG",
+              "HAIRLINE", "POPUP_BG", "RED", "GREEN", "YELLOW", "ORANGE", "MAGENTA"}
+if set(colors) != want_names:
+    errs.append(f"{palette}: exports {sorted(colors)}, expected {sorted(want_names)}")
+for name, value in sorted(colors.items()):
+    if not re.fullmatch(r"0x[0-9a-f]{8}", value):
+        errs.append(f"{palette}: {name} is {value!r}, not 0xAARRGGBB")
+for name, want in (("ACCENT", "0xff7aa2f7"), ("GUTTER", "0xff3b4261")):
+    if colors.get(name) != want:
+        errs.append(f"{palette}: {name} is {colors.get(name)!r}, expected {want}")
+
+for e in errs:
+    print("  " + e, file=sys.stderr)
+sys.exit(1 if errs else 0)
+AEROSPACE
+ok "aerospace config"
+
 # The real parser, when a mise exists. This block went red on every Mac with
 # mise on it until the three tap entries left [bootstrap.packages]; see the
 # note there. It has no value as a pass/fail gate unless it can reach one.

@@ -32,6 +32,10 @@ Vorssaint
 - Name the folders the Command Bar searches.
 - Set the scroll speed.
 
+AeroSpace
+
+- To pause tiling for screen sharing, press Option+Shift+Ö then Q. Run `aerospace enable on` to resume.
+
 Mail, on a personal Mac only
 
 - Proton Mail Bridge: log in, turn on start at login.

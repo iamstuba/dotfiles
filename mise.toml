@@ -93,6 +93,11 @@ adopt = true
 # A directory symlink, because Karabiner watches the directory, not the file.
 "~/.config/karabiner" = "config/karabiner"
 
+# file-level, so anything else AeroSpace puts in ~/.config/aerospace stays out of the clone.
+"~/.config/aerospace/aerospace.toml" = "config/aerospace/aerospace.toml"
+# A directory symlink, because sketchybarrc and its plugins will live beside colors.sh.
+"~/.config/sketchybar" = "config/sketchybar"
+
 # ---------------------------------------------------------- macos defaults --
 # Vetoed line by line. Arrays, dicts, -currentHost and sudo writes are
 # in bin/macos-post-defaults.
