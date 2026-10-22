@@ -13,7 +13,7 @@ The two tracked mise config files that together declare what every Mac gets. The
 _Avoid_: Brewfile, package list
 
 **Overlay**:
-A mise config file loaded only when `MISE_ENV` names it. Every Mac names exactly one, `work` or `personal`. The global `config.work.toml` holds the tools and packages work gets on top of the manifest, none today; the repo-root `mise.work.toml` turns manifest packages off at work, and `mise.personal.toml` holds the dotfiles and hooks a work Mac must not get, since mise cannot switch off an entry the manifest declares.
+A pair of mise config files loaded only when `MISE_ENV` names them. Every Mac names exactly one, `work` or `personal`. Each overlay has one file beside each half of the manifest: `config/mise/config.<env>.toml` for tools, settings and tasks, and the repo-root `mise.<env>.toml` for packages, dotfiles and hooks, and each repo-root file links its own global one. mise cannot remove a tool, dotfile or task the manifest declares, so whatever one kind of Mac must not get lives in the other kind's overlay. The work overlay can only turn manifest packages off.
 _Avoid_: profile, environment file, work manifest
 
 **Trust**:
@@ -85,11 +85,11 @@ The full-screen client for reading a diff or a pull request. tuicr. Owns no git 
 _Avoid_: TUI, diff viewer, code review tool
 
 **Coding agent**:
-One of the two the manifest installs and configures: Claude Code and pi. herdr owns their panes but is not one of them.
+An agent the repo installs and configures: Claude Code on every Mac, pi on a personal Mac only. herdr owns their panes but is not one of them.
 _Avoid_: assistant, AI, bot, LLM
 
 **Shared instruction file**:
-`home/.agents/AGENTS.md`, the one file both coding agents read as their global instructions, linked to a different path in each. Half the owner's own rules, half a vendored copy of someone else's writing rules.
+`home/.agents/AGENTS.md`, the one file every coding agent on a Mac reads as its global instructions, linked to a different path in each. Half the owner's own rules, half a vendored copy of someone else's writing rules.
 _Avoid_: CLAUDE.md, rules file, system prompt
 
 **Agent multiplexer**:
