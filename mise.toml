@@ -139,6 +139,7 @@ NSGlobalDomain._HIHideMenuBar = true
 NSGlobalDomain.AppleMenuBarVisibleInFullscreen = false
 "com.apple.controlcenter".AutoHideMenuBarOption = 0
 NSGlobalDomain."com.apple.mouse.scaling" = 1.0              # seeded from a trackpad, corrected for the mouse in the settings pass
+"com.apple.Terminal".SecureKeyboardEntry = false            # while Terminal is in front it blocks every AeroSpace and Vorssaint hotkey
 
 # ------------------------------------------------------------------- hooks --
 # Hooks run on system binaries only; anything needing a manifest tool is in
