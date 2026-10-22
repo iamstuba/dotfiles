@@ -23,6 +23,7 @@ System Settings
 - Focus: build one mode that allows only Slack notifications.
 - Desktop & Dock: leave "Displays have separate Spaces" on. SketchyBar needs it.
 - Never sign in to Game Center.
+- Keyboard: in Keyboard Shortcuts > Input Sources, untick both shortcuts. The first takes Ctrl+Space, which accepts a zsh suggestion.
 - The native menu bar is hidden. Hover the top edge for its icons and the Wi-Fi name.
 
 Vorssaint
