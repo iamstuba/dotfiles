@@ -10,3 +10,5 @@
 "brew-cask:proton-pass" = { state = "absent" }
 "brew-cask:thunderbird" = { state = "absent" }
 "brew-cask:proton-mail-bridge" = { state = "absent" }
+# The work Mac brings its own Slack, so one app never has two sources.
+"brew-cask:slack" = { state = "absent" }
