@@ -38,3 +38,5 @@ A resolved ticket's `## Comments` section holds decisions made after its Answer 
 ## From map to implementation
 
 The map ends when no open tickets remain. Implementation then runs per area, never from one combined spec. For each area a session reads the owning tickets (Answers and Comments), writes `.scratch/impl-<area>/spec.md` reconciling them, derives issues under `.scratch/impl-<area>/issues/`, and implements from those. Contradictions between tickets are resolved in the spec, with a comment back on the losing ticket.
+
+An impl spec and its issues start on a triage label, usually `ready-for-agent`, never `open`. `open` belongs to map tickets, and an impl issue left on it reads as unready to an agent scanning for work.
