@@ -1,7 +1,8 @@
 #!/bin/sh
-# Local git identity, profiles and their signing keys, the GitHub SSH key and
-# SSH remotes. Run by `mise run setup-git` and by the installer. Rerunnable:
-# every step skips what exists. --dry-run or DRY_RUN=1 prints.
+# Local git identity, profiles and their signing keys, the GitHub SSH key, the
+# work Mac's GitLab login and key, and SSH remotes. Run by `mise run setup-git`
+# and by the installer. Rerunnable: every step skips what exists. --dry-run or
+# DRY_RUN=1 prints.
 set -eu
 
 die() { echo "setup-git: $*" >&2; exit 1; }
@@ -94,12 +95,14 @@ if ! gh auth status >/dev/null 2>&1; then
   run gh auth login -w -p ssh --skip-ssh-key -s "$scopes"
 fi
 
-# The installer normally made the key already, so the passphrase prompt came early.
-if [ ! -f "$github_key" ]; then
+make_key() {
   run mkdir -p "$HOME/.ssh"
-  run ssh-keygen -t ed25519 -C "$GIT_EMAIL" -f "$github_key"
-  run ssh-add --apple-use-keychain "$github_key"
-fi
+  run ssh-keygen -t ed25519 -C "$GIT_EMAIL" -f "$1"
+  run ssh-add --apple-use-keychain "$1"
+}
+
+# The installer normally made the key already, so the passphrase prompt came early.
+[ -f "$github_key" ] || make_key "$github_key"
 
 # Registered twice, once per use. GitHub refuses a duplicate, so check first.
 pub=$(cut -d' ' -f2 "$github_key.pub" 2>/dev/null || true)
@@ -121,6 +124,31 @@ register() {
 }
 register authentication
 register signing
+
+# The work Mac's GitLab login and key, as the installer makes them. mise runs
+# this inside the dotfiles clone, whose remote is github.com, so GITLAB_HOST
+# pins the host for ssh-key, which takes no --hostname.
+glab() {
+  GLAB_CONFIG_DIR=$HOME/.config/glab-cli GLAB_SEND_TELEMETRY=0 GITLAB_HOST=gitlab.com command glab "$@"
+}
+if [ "$machine_env" = work ]; then
+  # A login on a host with credentials always asks to re-authenticate, so check first.
+  if [ -z "$(glab config get user --host gitlab.com 2>/dev/null || true)" ]; then
+    run glab auth login --hostname gitlab.com --web -g ssh
+  fi
+  [ -f "$gitlab_key" ] || make_key "$gitlab_key"
+  # GitLab refuses a key it already has, which is success, as for gh.
+  gitlab_pub=$(cut -d' ' -f2 "$gitlab_key.pub" 2>/dev/null || true)
+  if [ -z "$gitlab_pub" ] || [ -n "${DRY_RUN:-}" ] || ! glab ssh-key list 2>/dev/null | grep -qF "$gitlab_pub"; then
+    if ! out=$(run glab ssh-key add "$gitlab_key.pub" --title "$(hostname)" --usage-type auth_and_signing 2>&1); then
+      case "$out" in
+        *"has already been taken"*) ;;
+        *) die "$out" ;;
+      esac
+    fi
+    [ -z "$out" ] || printf '%s\n' "$out"
+  fi
+fi
 
 # Local files, never overwritten: identity is edited by hand after this.
 write() {

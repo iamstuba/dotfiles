@@ -48,6 +48,10 @@ LibreWolf, on a personal Mac only
 - Sites show UTC time and the window opens at 1600x900. That is fingerprinting resistance, on purpose.
 - Netflix and Spotify do not play. DRM is off on purpose.
 
+GitLab, on the work Mac only
+
+- The first `git clone` from gitlab.com asks to confirm its host key. Compare it with the [SSH fingerprints GitLab publishes for gitlab.com](https://docs.gitlab.com/user/gitlab_com/#ssh-host-keys-fingerprints) before you answer yes.
+
 Slack
 
 - Preferences > Appearance > Custom theme, paste `#1a1b26,#16161e,#bb9af7,#283457`.
@@ -104,7 +108,7 @@ file does not exist, and `mise run check` warns when it finds one.
 
 - `mise.toml`: packages, symlink map, macOS defaults, hooks, repo-bound tasks.
 - `config/mise/config.toml`: tools, settings, update tasks. Symlinked to `~/.config/mise/`.
-- `config/mise/config.work.toml`: work-only tools and packages, none today, loaded when `MISE_ENV` includes `work`.
+- `config/mise/config.work.toml`: work-only tools, glab today, loaded when `MISE_ENV` includes `work`.
 - `config/mise/config.personal.toml`: pi and its tasks, loaded when `MISE_ENV` includes `personal`.
 - `mise.work.toml`: packages turned off at work. `mise.personal.toml`: the dotfiles, pi's among them, the bundled app removal and the LibreWolf policies a work Mac must not get. Each links its own global overlay. The installer sets `MISE_ENV` to exactly one of `work` and `personal`.
 - `config/`: mirrors `~/.config`. `home/`: top-level dotfiles. `bin/`: scripts on PATH.

@@ -476,11 +476,12 @@ $upd_open"
 upd_quiet "with a failed reopen"
 ok "update:apps quits and reopens LibreWolf"
 
-# setup-git, run for real in a temp HOME. The forge CLIs, ssh-keygen and
-# ssh-add are stubs that log their arguments, so nothing reaches GitHub or the
-# keychain. gh keeps what it was given in the case's state directory and
-# answers from it, so a rerun sees what the first run did. DOTFILES names a
-# directory with no clone, so no remote is flipped.
+# setup-git and install.sh, run for real in a temp HOME. The forge CLIs,
+# ssh-keygen and ssh-add are stubs that log their arguments, so nothing
+# reaches GitHub, GitLab or the keychain. gh and glab keep what they were given
+# in the case's state directory and answer from it, so a rerun sees what the
+# first run did. setup-git's DOTFILES names a directory with no clone, so no
+# remote is flipped.
 # The git section probes these homes, so the path is physical for the reason
 # it gives there.
 sg=$(cd "$tmp_home" && pwd -P)/setup-git
@@ -496,8 +497,30 @@ case "$1 $2" in
   "api meta") echo 'ssh-ed25519 AAAAstubhostkey' ;;
 esac
 EOF
-# Nothing in setup-git calls glab yet, and a call that lands fails the log check.
-printf '#!/bin/sh\necho "glab $*" >>"$SG_LOG"\nexit 1\n' >"$sg/stubs/glab"
+# The installer never loads the overlay's [env], so each script must set glab's
+# env itself. A call without it logs as such and fails the log comparison.
+# SG_GLAB_ADD=taken fails the upload with GitLab's duplicate-key error, and
+# SG_GLAB_ADD=fail with a 401.
+cat >"$sg/stubs/glab" <<'EOF'
+#!/bin/sh
+if [ "${GLAB_CONFIG_DIR:-}" = "$HOME/.config/glab-cli" ] && [ "${GLAB_SEND_TELEMETRY:-}" = 0 ] \
+  && [ "${GITLAB_HOST:-}" = gitlab.com ]; then
+  echo "glab $*" >>"$SG_LOG"
+else
+  echo "glab without its env: $*" >>"$SG_LOG"
+fi
+case "$1 $2" in
+  "config get") if [ -f "$SG_STATE/glab-login" ]; then echo stub-user; fi ;;
+  "auth login") : >"$SG_STATE/glab-login" ;;
+  "ssh-key list") cat "$SG_STATE/glab-keys" 2>/dev/null || true ;;
+  "ssh-key add")
+    case "${SG_GLAB_ADD:-}" in
+      taken) echo 'ERROR: 400 {fingerprint_sha256: [has already been taken]}' >&2; exit 1 ;;
+      fail) echo 'ERROR: 401 Unauthorized' >&2; exit 1 ;;
+    esac
+    printf 'stub\t%s\tauth_and_signing\n' "$(cut -d' ' -f1,2 "$3")" >>"$SG_STATE/glab-keys" ;;
+esac
+EOF
 # No mkdir: the real ssh-keygen fails when the key's directory is missing.
 cat >"$sg/stubs/ssh-keygen" <<'EOF'
 #!/bin/sh
@@ -508,6 +531,24 @@ echo "ssh-ed25519 AAAAstub-$(basename "$f") stub" >"$f.pub"
 EOF
 printf '#!/bin/sh\necho "ssh-add $*" >>"$SG_LOG"\n' >"$sg/stubs/ssh-add"
 chmod +x "$sg"/stubs/*
+# The installer's own stubs, kept off setup-git's PATH. sudo logs all but the
+# keepalive's -n calls. sleep is short, so the keepalive loop ends a second
+# after the installer does instead of a minute.
+mkdir -p "$sg/install-stubs"
+printf '#!/bin/sh\n[ "$1" = -n ] || echo "sudo $*" >>"$SG_LOG"\n' >"$sg/install-stubs/sudo"
+printf '#!/bin/sh\nexec /bin/sleep 1\n' >"$sg/install-stubs/sleep"
+# Installed at ~/.local/bin/mise, where the installer looks. x runs the tool
+# through to its stub, and anything else only logs.
+cat >"$sg/install-stubs/mise" <<'EOF'
+#!/bin/sh
+echo "mise $*" >>"$SG_LOG"
+if [ "$1" = x ]; then
+  while [ "$1" != -- ]; do shift; done
+  shift
+  exec "$@"
+fi
+EOF
+chmod +x "$sg"/install-stubs/*
 
 sg_case() { # $1: case name, $2: the env miserc names, or nothing for no miserc
   rm -rf "${sg:?}/$1"
@@ -525,6 +566,25 @@ sg_run() { # $1: case name, then NAME=value pairs and setup-git's arguments
   (cd "$c" && env -i PATH="$sg/stubs:/usr/bin:/bin" HOME="$c/home" SG_LOG="$c/log" SG_STATE="$c/state" \
     DOTFILES="$c/no-clone" GIT_NAME='Test Person' "$@" </dev/null >"$c/out" 2>&1)
 }
+sg_install() { # $1: case name, then NAME=value pairs
+  c=$sg/$1
+  shift
+  : >"$c/log"
+  mkdir -p "$c/home/.local/bin" "$c/clone/.git" "$c/clone/.scratch/.git"
+  cp "$sg/install-stubs/mise" "$c/home/.local/bin/mise"
+  # The clone and the scratch clone already exist, so the installer clones
+  # nothing. The Command Line Tools check reads the real /Library, and
+  # smoke cannot run on a Mac without them.
+  (cd "$c" && env -i PATH="$sg/install-stubs:$sg/stubs:/usr/bin:/bin" HOME="$c/home" SG_LOG="$c/log" \
+    SG_STATE="$c/state" DOTFILES="$c/clone" GIT_NAME='Test Person' GIT_PROFILES= "$@" \
+    sh "$root/install.sh" </dev/null >"$c/out" 2>&1)
+}
+sg_install_tail() { # $1: case name; what every installer run ends with
+  printf 'mise trust %s\n' "$sg/$1/clone/mise.toml" "$sg/$1/clone/mise.work.toml" \
+    "$sg/$1/clone/mise.personal.toml" "$sg/$1/clone/config/mise/config.toml" \
+    "$sg/$1/clone/config/mise/config.work.toml" "$sg/$1/clone/config/mise/config.personal.toml"
+  printf 'mise -C %s bootstrap --yes\nmise -C %s run setup-git\n' "$sg/$1/clone" "$sg/$1/clone"
+}
 sg_snap() { # Every file in the case's HOME with its checksum.
   (cd "$sg/$1/home" && find . \( -type f -o -type l \) -exec cksum {} + | sort)
 }
@@ -534,7 +594,7 @@ sg_file_is() { # $1: case, $2: file under HOME, $3: its expected content
 $(cat "$sg/$1/home/$2" 2>&1)"
 }
 sg_log_is() { # $1: case, $2: the log it must have written
-  [ "$(cat "$sg/$1/log")" = "$2" ] || fail "setup-git $1 logged:
+  [ "$(cat "$sg/$1/log")" = "$2" ] || fail "case $1 logged:
 $(cat "$sg/$1/log")"
 }
 # A rerun with the same input changes no file and sends only the reads.
@@ -542,10 +602,16 @@ sg_rerun_quiet() { # $1: case, then sg_run's arguments
   before=$(sg_snap "$1")
   sg_run "$@" sh "$root/bin/setup-git" || fail "setup-git $1 rerun exited nonzero: $(cat "$sg/$1/out")"
   [ "$(sg_snap "$1")" = "$before" ] || fail "setup-git $1 rerun changed files"
+  glab_reads=
+  if grep -qs '^env *=.*"work"' "$sg/$1/home/.config/mise/miserc.toml"; then
+    glab_reads="glab config get user --host gitlab.com
+glab ssh-key list
+"
+  fi
   sg_log_is "$1" "gh auth status
 gh ssh-key list
 gh ssh-key list
-gh config set git_protocol ssh"
+${glab_reads}gh config set git_protocol ssh"
 }
 sg_host=$(hostname)
 sg_note='the work Mac signs with ~/.ssh/id_ed25519_gitlab.pub. Edit [user] by hand.'
@@ -594,7 +660,22 @@ sg_case work-fresh work
 h=$sg/work-fresh/home
 set -- work-fresh GIT_EMAIL=work@example.com GIT_PROFILES='~/Work=w@example.com=gitlab, ~/Personal=p@example.com'
 sg_run "$@" sh "$root/bin/setup-git" || fail "setup-git work-fresh exited nonzero: $(cat "$sg/work-fresh/out")"
-grep -q '^glab' "$sg/work-fresh/log" && fail "setup-git work-fresh called glab"
+sg_log_is work-fresh "gh auth status
+gh auth login -w -p ssh --skip-ssh-key -s admin:public_key,admin:ssh_signing_key
+ssh-keygen -t ed25519 -C work@example.com -f $h/.ssh/id_ed25519_github
+ssh-add --apple-use-keychain $h/.ssh/id_ed25519_github
+gh ssh-key list
+gh ssh-key add $h/.ssh/id_ed25519_github.pub --type authentication --title $sg_host
+gh ssh-key list
+gh ssh-key add $h/.ssh/id_ed25519_github.pub --type signing --title $sg_host
+glab config get user --host gitlab.com
+glab auth login --hostname gitlab.com --web -g ssh
+ssh-keygen -t ed25519 -C work@example.com -f $h/.ssh/id_ed25519_gitlab
+ssh-add --apple-use-keychain $h/.ssh/id_ed25519_gitlab
+glab ssh-key list
+glab ssh-key add $h/.ssh/id_ed25519_gitlab.pub --title $sg_host --usage-type auth_and_signing
+gh config set git_protocol ssh
+gh api meta --jq .ssh_keys[]"
 sg_file_is work-fresh .gitconfig-local "[user]
 	name = Test Person
 	email = work@example.com
@@ -656,7 +737,8 @@ set -- existing GIT_EMAIL=work@example.com GIT_PROFILES='~/Projects/iamstuba=per
 before=$(sg_snap existing)
 sg_run "$@" sh "$root/bin/setup-git" --dry-run || fail "setup-git existing --dry-run exited nonzero: $(cat "$sg/existing/out")"
 [ "$(sg_snap existing)" = "$before" ] || fail "setup-git existing --dry-run changed files"
-sg_log_is existing "gh auth status"
+sg_log_is existing "gh auth status
+glab config get user --host gitlab.com"
 for want in "+ append $h/.gitconfig-local" '    [includeIf "gitdir/i:~/Projects/iamstuba/"]' "+ write $h/.gitconfig-iamstuba"; do
   grep -qxF -- "$want" "$sg/existing/out" || fail "setup-git existing --dry-run did not print '$want': $(cat "$sg/existing/out")"
 done
@@ -690,6 +772,89 @@ sg_rerun_quiet "$@"
 grep -qF "$sg_note" "$sg/existing/out" && fail "setup-git existing printed the note for the private key path"
 ok "setup-git, the work Mac already set up"
 
+# GitLab refusing the upload because it has the key is success. Any other
+# refusal stops setup-git before it writes the identity.
+sg_case upload work
+sg_run upload GIT_EMAIL=work@example.com GIT_PROFILES= SG_GLAB_ADD=taken sh "$root/bin/setup-git" \
+  || fail "setup-git failed on a key GitLab already has: $(cat "$sg/upload/out")"
+grep -qxF "glab ssh-key add $sg/upload/home/.ssh/id_ed25519_gitlab.pub --title $sg_host --usage-type auth_and_signing" \
+  "$sg/upload/log" || fail "setup-git never tried the GitLab upload: $(cat "$sg/upload/log")"
+sg_case upload work
+sg_run upload GIT_EMAIL=work@example.com GIT_PROFILES= SG_GLAB_ADD=fail sh "$root/bin/setup-git" \
+  && fail "setup-git passed a failed GitLab upload"
+grep -qF '401 Unauthorized' "$sg/upload/out" || fail "setup-git hid GitLab's refusal: $(cat "$sg/upload/out")"
+[ -e "$sg/upload/home/.gitconfig-local" ] && fail "setup-git wrote ~/.gitconfig-local after a failed GitLab upload"
+ok "setup-git, the GitLab upload"
+
+# The installer through to its last step, against the stub mise. A personal
+# Mac never calls glab and gets no GitLab key.
+sg_case install-personal ""
+h=$sg/install-personal/home
+sg_install install-personal DOTFILES_WORK=0 GIT_EMAIL=personal@example.com \
+  || fail "install.sh personal exited nonzero: $(cat "$sg/install-personal/out")"
+sg_log_is install-personal "sudo -v
+mise x github-cli -- gh auth status
+gh auth status
+mise x github-cli -- gh auth login -w -p ssh --skip-ssh-key -s admin:public_key,admin:ssh_signing_key
+gh auth login -w -p ssh --skip-ssh-key -s admin:public_key,admin:ssh_signing_key
+ssh-keygen -t ed25519 -C personal@example.com -f $h/.ssh/id_ed25519_github
+ssh-add --apple-use-keychain $h/.ssh/id_ed25519_github
+$(sg_install_tail install-personal)"
+[ -e "$h/.ssh/id_ed25519_gitlab" ] && fail "install.sh personal made a GitLab key"
+sg_file_is install-personal .config/mise/miserc.toml 'env = ["personal"]'
+ok "install.sh, a personal Mac"
+
+# The work Mac, fresh: the GitLab login right after the work question, the
+# GitLab key right after the GitHub key, then setup-git uploads it. A rerun
+# of both asks for nothing and sends nothing.
+sg_case install-work ""
+h=$sg/install-work/home
+sg_install install-work DOTFILES_WORK=1 GIT_EMAIL=work@example.com \
+  || fail "install.sh work exited nonzero: $(cat "$sg/install-work/out")"
+sg_log_is install-work "sudo -v
+mise x github-cli -- gh auth status
+gh auth status
+mise x github-cli -- gh auth login -w -p ssh --skip-ssh-key -s admin:public_key,admin:ssh_signing_key
+gh auth login -w -p ssh --skip-ssh-key -s admin:public_key,admin:ssh_signing_key
+mise x gitlab:gitlab-org/cli -- glab config get user --host gitlab.com
+glab config get user --host gitlab.com
+mise x gitlab:gitlab-org/cli -- glab auth login --hostname gitlab.com --web -g ssh
+glab auth login --hostname gitlab.com --web -g ssh
+ssh-keygen -t ed25519 -C work@example.com -f $h/.ssh/id_ed25519_github
+ssh-add --apple-use-keychain $h/.ssh/id_ed25519_github
+ssh-keygen -t ed25519 -C work@example.com -f $h/.ssh/id_ed25519_gitlab
+ssh-add --apple-use-keychain $h/.ssh/id_ed25519_gitlab
+$(sg_install_tail install-work)"
+sg_file_is install-work .config/mise/miserc.toml 'env = ["work"]'
+# What the stub mise's `run setup-git` stands for.
+set -- install-work GIT_EMAIL=work@example.com GIT_PROFILES=
+sg_run "$@" sh "$root/bin/setup-git" || fail "setup-git install-work exited nonzero: $(cat "$sg/install-work/out")"
+sg_log_is install-work "gh auth status
+gh ssh-key list
+gh ssh-key add $h/.ssh/id_ed25519_github.pub --type authentication --title $sg_host
+gh ssh-key list
+gh ssh-key add $h/.ssh/id_ed25519_github.pub --type signing --title $sg_host
+glab config get user --host gitlab.com
+glab ssh-key list
+glab ssh-key add $h/.ssh/id_ed25519_gitlab.pub --title $sg_host --usage-type auth_and_signing
+gh config set git_protocol ssh
+gh api meta --jq .ssh_keys[]"
+grep -qxF "	signingkey = $h/.ssh/id_ed25519_gitlab.pub" "$h/.gitconfig-local" \
+  || fail "setup-git install-work: ~/.gitconfig-local does not sign with the GitLab key"
+before=$(sg_snap install-work)
+sg_install install-work DOTFILES_WORK=1 GIT_EMAIL=work@example.com \
+  || fail "install.sh work rerun exited nonzero: $(cat "$sg/install-work/out")"
+sg_log_is install-work "sudo -v
+mise x github-cli -- gh auth status
+gh auth status
+mise x gitlab:gitlab-org/cli -- glab config get user --host gitlab.com
+glab config get user --host gitlab.com
+$(sg_install_tail install-work)"
+[ "$(sg_snap install-work)" = "$before" ] || fail "install.sh work rerun changed files"
+sg_rerun_quiet "$@"
+grep -qF "$sg_note" "$sg/install-work/out" && fail "setup-git install-work printed the note on a rerun"
+ok "install.sh and setup-git, the work Mac"
+
 out=$(HOME=$tmp_home DOTFILES=$root DOTFILES_WORK=0 GIT_NAME=Test GIT_EMAIL=test@example.com GIT_PROFILES= \
   sh install.sh --dry-run) || fail "install.sh --dry-run"
 echo "$out" | grep -q 'ssh-keygen' || fail "install: key generation missing"
@@ -697,6 +862,7 @@ echo "$out" | grep -q 'bootstrap --yes' || fail "install: bootstrap command miss
 echo "$out" | grep -q 'run setup-git' || fail "install: setup-git command missing"
 echo "$out" | grep -q 'env = \["work"\]' && fail "install: wrote the work overlay on a personal answer"
 echo "$out" | grep -q 'env = \["personal"\]' || fail "install: personal answer did not write miserc.toml"
+echo "$out" | grep -qE 'glab|gitlab' && fail "install: a personal dry run names glab or the GitLab key"
 out=$(HOME=$tmp_home DOTFILES=$root DOTFILES_WORK=1 GIT_NAME=Test GIT_EMAIL=test@example.com GIT_PROFILES= \
   sh install.sh --dry-run 2>&1) || fail "install.sh --dry-run (work)"
 hint='mise x claude -- claude'
@@ -708,6 +874,9 @@ if fail_out=$(HOME=$tmp_home DOTFILES=$root DOTFILES_WORK= GIT_NAME=Test GIT_EMA
 fi
 echo "$fail_out" | grep -qF -- "~/.local/bin/$hint" || fail "install: a failed run printed no mise claude hint"
 echo "$out" | grep -q 'env = \["work"\]' || fail "install: work answer did not write miserc.toml"
+echo "$out" | grep -qF 'glab auth login --hostname gitlab.com --web -g ssh' || fail "install: work dry run prints no GitLab login"
+echo "$out" | grep -qF "ssh-keygen -t ed25519 -C test@example.com -f $tmp_home/.ssh/id_ed25519_gitlab" \
+  || fail "install: work dry run prints no GitLab key"
 echo "$out" | grep -q 'env = \["personal"\]' && fail "install: wrote the personal overlay on a work answer"
 # The zsh probe below grants the same trust to its own temp HOME, so without
 # this the probe would stay green while a bootstrapped Mac went back to mise

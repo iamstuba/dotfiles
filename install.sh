@@ -30,6 +30,7 @@ mise=$HOME/.local/bin/mise
 repo=https://github.com/iamstuba/dotfiles.git
 scratch=git@github.com:iamstuba/dotfiles-scratch.git
 key=$HOME/.ssh/id_ed25519_github
+gitlab_key=$HOME/.ssh/id_ed25519_gitlab
 scopes=admin:public_key,admin:ssh_signing_key
 clt=/Library/Developer/CommandLineTools
 
@@ -39,6 +40,12 @@ if [ -n "${NO_COLOR:-}" ] || [ ! -t 1 ]; then bold= reset=; fi
 say() { printf '%s==> %s%s\n' "$bold" "$*" "$reset"; }
 run() { if [ "${DRY_RUN:-}" ]; then printf '+ %s\n' "$*"; else "$@"; fi; }
 gh() { "$mise" x github-cli -- gh "$@"; }
+# The overlay's [env] never reaches the installer, so glab's is set here, the
+# same three as setup-git sets.
+glab() {
+  GLAB_CONFIG_DIR=$HOME/.config/glab-cli GLAB_SEND_TELEMETRY=0 GITLAB_HOST=gitlab.com \
+    "$mise" x gitlab:gitlab-org/cli -- glab "$@"
+}
 ask() {
   eval "val=\${$1:-}"
   if [ -z "$val" ]; then
@@ -105,11 +112,25 @@ else
   printf 'env = ["%s"]\n' "$machine_env" >>"$miserc"
 fi
 
-# Here so the passphrase prompt is early; setup-git only generates when missing.
-if [ ! -f "$key" ]; then
+# Only after the work question, so a personal Mac never logs into GitLab. A
+# login on a host with credentials always asks to re-authenticate, so check first.
+if [ "$machine_env" = work ]; then
+  if [ "${DRY_RUN:-}" ]; then
+    echo "+ glab config get user --host gitlab.com || glab auth login --hostname gitlab.com --web -g ssh"
+  elif [ -z "$(glab config get user --host gitlab.com 2>/dev/null || true)" ]; then
+    glab auth login --hostname gitlab.com --web -g ssh
+  fi
+fi
+
+# Here so the passphrase prompts are early; setup-git only generates when missing.
+make_key() {
   run mkdir -p "$HOME/.ssh"
-  run ssh-keygen -t ed25519 -C "$GIT_EMAIL" -f "$key"
-  run ssh-add --apple-use-keychain "$key"
+  run ssh-keygen -t ed25519 -C "$GIT_EMAIL" -f "$1"
+  run ssh-add --apple-use-keychain "$1"
+}
+[ -f "$key" ] || make_key "$key"
+if [ "$machine_env" = work ] && [ ! -f "$gitlab_key" ]; then
+  make_key "$gitlab_key"
 fi
 
 say "Unattended from here. Come back later, approve the dialogs on screen, then restart."
