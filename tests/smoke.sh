@@ -361,6 +361,82 @@ sh bin/brew-tap-packages >/dev/null 2>&1 && fail "brew-tap-packages: missing act
 sh bin/brew-tap-packages install --bogus >/dev/null 2>&1 && fail "brew-tap-packages: unknown argument accepted"
 ok "brew-tap-packages --dry-run"
 
+# update:apps quits LibreWolf before mise replaces its bundle, and reopens it
+# after. The task text runs the way mise runs it, against stubs that log, so
+# nothing on this Mac quits, opens or upgrades.
+upd=$tmp_home/update-apps
+mkdir -p "$upd/stubs" "$upd/dotfiles/bin"
+: >"$upd/dotfiles/bin/brew-tap-packages"
+# Each stub logs its arguments, and the one named in UPD_FAIL exits 1.
+for name in osascript open mise sh; do
+  printf '#!/bin/sh\necho "%s $*" >>"$UPD_LOG"\n[ "$UPD_FAIL" != %s ]\n' "$name" "$name" >"$upd/stubs/$name"
+done
+printf '#!/bin/sh\n' >"$upd/stubs/sleep"
+# The pgrep stub finds LibreWolf running on its first UPD_RUNNING_CHECKS calls.
+# It logs any other arguments, so a guard that lost -x or named another
+# process fails the log comparison.
+cat >"$upd/stubs/pgrep" <<'EOF'
+#!/bin/sh
+[ "$*" = "-xq librewolf" ] || echo "pgrep $*" >>"$UPD_LOG"
+n=$(($(cat "$UPD_COUNT" 2>/dev/null || echo 0) + 1))
+echo "$n" >"$UPD_COUNT"
+[ "$n" -le "$UPD_RUNNING_CHECKS" ]
+EOF
+chmod +x "$upd"/stubs/*
+upd_run=$(yq -r '.tasks."update:apps".run' config/mise/config.toml) || fail "update:apps has no run text"
+update_apps() { # $1: how many pgrep calls find LibreWolf running, $2: the stub that fails
+  : >"$upd/log"
+  rm -f "$upd/count"
+  PATH=$upd/stubs:/usr/bin:/bin DOTFILES=$upd/dotfiles UPD_LOG=$upd/log UPD_COUNT=$upd/count \
+    UPD_RUNNING_CHECKS=$1 UPD_FAIL=${2:-} /bin/sh -o errexit -c "$upd_run" 2>"$upd/err"
+}
+upd_quit='osascript -e with timeout of 30 seconds -e tell application id "net.librewolf.librewolf" to quit -e end timeout'
+upd_mise='mise bootstrap packages upgrade --yes'
+upd_upgrade="$upd_mise
+sh $upd/dotfiles/bin/brew-tap-packages upgrade"
+upd_open='open -b net.librewolf.librewolf'
+upd_log_is() { # $1: the run, $2: the log it must have written
+  [ "$(cat "$upd/log")" = "$2" ] || fail "update:apps $1 logged:
+$(cat "$upd/log")"
+}
+upd_quiet() { # $1: the run
+  [ -s "$upd/err" ] && fail "update:apps $1 wrote to stderr: $(cat "$upd/err")"
+  return 0
+}
+
+update_apps 0 || fail "update:apps without LibreWolf exited nonzero"
+upd_log_is "without LibreWolf" "$upd_upgrade"
+upd_quiet "without LibreWolf"
+
+update_apps 1 || fail "update:apps with LibreWolf exited nonzero"
+upd_log_is "with LibreWolf" "$upd_quit
+$upd_upgrade
+$upd_open"
+upd_quiet "with LibreWolf"
+
+# A denied Automation prompt fails osascript, and the timeout must still name
+# the problem rather than errexit ending the task with no message.
+for failing in "" osascript; do
+  run="with LibreWolf that never quits${failing:+ and a failing osascript}"
+  update_apps 999 "$failing" && fail "update:apps upgraded $run"
+  upd_log_is "$run" "$upd_quit
+$upd_open"
+  grep -qxF 'update:apps: LibreWolf did not quit; close it and rerun' "$upd/err" \
+    || fail "update:apps $run printed: $(cat "$upd/err")"
+done
+
+update_apps 1 mise && fail "update:apps hid a failed upgrade"
+upd_log_is "with a failed upgrade" "$upd_quit
+$upd_mise
+$upd_open"
+
+update_apps 1 open || fail "update:apps failed an upgrade that worked because the reopen failed"
+upd_log_is "with a failed reopen" "$upd_quit
+$upd_upgrade
+$upd_open"
+upd_quiet "with a failed reopen"
+ok "update:apps quits and reopens LibreWolf"
+
 out=$(HOME=$tmp_home GIT_NAME=Test GIT_EMAIL=test@example.com GIT_PROFILES='~/Work=work@example.com' \
   DOTFILES=$root sh bin/setup-git --dry-run) || fail "setup-git --dry-run"
 echo "$out" | grep -q -- '--type authentication' || fail "setup-git: authentication key registration missing"

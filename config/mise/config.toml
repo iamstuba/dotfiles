@@ -56,6 +56,30 @@ run = """
 [tasks."update:apps"]
 description = "Update Homebrew formulae and casks, both those mise pours and those it cannot resolve."
 run = """
+  # mise replaces LibreWolf's bundle even while it runs, so quit it first. A
+  # clean quit, not pkill, writes the session its start page restores. Only a
+  # running LibreWolf gets this far, so a Mac without LibreWolf never calls
+  # osascript, which fails there.
+  if pgrep -xq librewolf; then
+    lw=net.librewolf.librewolf
+    # LibreWolf reopens even after a failed upgrade. A failed reopen must not
+    # fail an upgrade that worked, or update:all stops before update:plugins.
+    trap 'open -b "$lw" || true' EXIT
+    # A denied Automation prompt fails this, so the wait below times out. The
+    # AppleScript timeout keeps a quit dialog from holding osascript for two
+    # minutes.
+    quit="tell application id \\"$lw\\" to quit"
+    osascript -e 'with timeout of 30 seconds' -e "$quit" -e 'end timeout' || true
+    waited=0
+    while pgrep -xq librewolf; do
+      if [ "$waited" -ge 30 ]; then
+        echo "update:apps: LibreWolf did not quit; close it and rerun" >&2
+        exit 1
+      fi
+      sleep 1
+      waited=$((waited + 1))
+    done
+  fi
   mise bootstrap packages upgrade --yes
   # The tap packages are absent from [bootstrap.packages], so the line above
   # cannot see them and nothing else upgrades them. The repo is resolved the

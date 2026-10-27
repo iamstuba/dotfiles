@@ -71,6 +71,9 @@ casks), `update:plugins` (Neovim). Run `mise upgrade --dry-run`, `mise bootstrap
 and `bin/brew-tap-packages upgrade --dry-run` first on a new machine. The third
 covers what the second cannot see; see "Rerunning" below.
 
+On a personal Mac, LibreWolf quits during `update:apps` and reopens after it.
+The first run asks to let the terminal control LibreWolf; allow it.
+
 What no task can do:
 
 - Karabiner-Elements updates itself. mise never touches it.
