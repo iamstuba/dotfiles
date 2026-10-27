@@ -13,7 +13,7 @@ The two tracked mise config files that together declare what every Mac gets. The
 _Avoid_: Brewfile, package list
 
 **Overlay**:
-A pair of mise config files loaded only when `MISE_ENV` names them. Every Mac names exactly one, `work` or `personal`. Each overlay has one file beside each half of the manifest: `config/mise/config.<env>.toml` for tools, settings and tasks, and the repo-root `mise.<env>.toml` for packages, dotfiles and hooks, and each repo-root file links its own global one. mise cannot remove a tool, dotfile or task the manifest declares, so whatever one kind of Mac must not get lives in the other kind's overlay. The work overlay can only turn manifest packages off.
+A pair of mise config files loaded only when `MISE_ENV` names them. Every Mac names exactly one, `work` or `personal`. Each overlay has one file beside each half of the manifest: `config/mise/config.<env>.toml` for tools, settings and tasks, and the repo-root `mise.<env>.toml` for packages, dotfiles and hooks, and each repo-root file links its own global one. mise cannot remove a tool, dotfile or task the manifest declares, so whatever one kind of Mac must not get lives in the other kind's overlay. The work overlay turns manifest packages off and adds the tools only work uses.
 _Avoid_: profile, environment file, work manifest
 
 **Trust**:
@@ -33,7 +33,7 @@ The one-line `bash -c "$(curl ...)"` script that takes a fresh Mac through boots
 _Avoid_: setup script, curl-pipe-bash
 
 **Attended phase**:
-The first minutes of the installer, where a human types the password, logs into GitHub, answers identity questions, says whether this is the work Mac and lets the SSH key into the keychain.
+The first minutes of the installer, where a human types the password, logs into GitHub, answers identity questions, says whether this is the work Mac and lets the SSH key into the keychain. On the work Mac they also log into GitLab and let its own key in.
 _Avoid_: interactive part
 
 **Unattended phase**:
@@ -57,7 +57,7 @@ A machine-specific, untracked file read next to the tracked config when present.
 _Avoid_: override, secrets file
 
 **Profile**:
-A directory tree paired with the git identity and signing key used inside it. Each profile is its own local file, included by path.
+A directory tree paired with the git identity and signing key used inside it, in place of the Mac's default identity. Each profile is its own local file, included by path.
 _Avoid_: work config, includeIf
 
 **Workspace**:
