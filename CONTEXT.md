@@ -5,7 +5,7 @@ Configuration and setup for a personal Mac and the work Mac, each reproducible f
 ## Language
 
 **Mac**:
-Any Mac this repo bootstraps. Each is either a personal Mac or the work Mac, as the installer's work question records in the `personal` or `work` env. Identity, secrets and paths that belong to one Mac or employer never enter tracked files.
+Any Mac this repo bootstraps. Each is either a personal Mac or the work Mac. `~/.config/mise/miserc.toml` names its `personal` or `work` env and is the only place that answer lives. The installer's work question writes it once, and everything after reads it. Identity, secrets and paths that belong to one Mac or employer never enter tracked files.
 _Avoid_: laptop, host, machine, personal machine
 
 **Manifest**:
@@ -33,7 +33,7 @@ The one-line `bash -c "$(curl ...)"` script that takes a fresh Mac through boots
 _Avoid_: setup script, curl-pipe-bash
 
 **Attended phase**:
-The first minutes of the installer, where a human types the password, logs into GitHub, answers identity questions, says whether this is the work Mac and lets the SSH key into the keychain. On the work Mac they also log into GitLab and let its own key in.
+The first minutes of the installer, where a human says whether this is the work Mac unless miserc already does, types the password, logs into GitHub, answers identity questions and lets the SSH key into the keychain. On the work Mac they also log into GitLab and let its own key in.
 _Avoid_: interactive part
 
 **Unattended phase**:

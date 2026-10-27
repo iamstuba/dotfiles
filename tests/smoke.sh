@@ -606,7 +606,7 @@ sg_rerun_quiet() { # $1: case, then sg_run's arguments
   glab_reads=
   if grep -qs '^env *=.*"work"' "$sg/$1/home/.config/mise/miserc.toml"; then
     glab_reads="glab config get user --host gitlab.com
-glab ssh-key list
+glab ssh-key list --per-page 100
 "
   fi
   sg_log_is "$1" "gh auth status
@@ -673,7 +673,7 @@ glab config get user --host gitlab.com
 glab auth login --hostname gitlab.com --web -g ssh
 ssh-keygen -t ed25519 -C work@example.com -f $h/.ssh/id_ed25519_gitlab
 ssh-add --apple-use-keychain $h/.ssh/id_ed25519_gitlab
-glab ssh-key list
+glab ssh-key list --per-page 100
 glab ssh-key add $h/.ssh/id_ed25519_gitlab.pub --title $sg_host --usage-type auth_and_signing
 gh config set git_protocol ssh
 gh api meta --jq .ssh_keys[]"
@@ -773,19 +773,19 @@ sg_rerun_quiet "$@"
 grep -qF "$sg_note" "$sg/existing/out" && fail "setup-git existing printed the note for the private key path"
 ok "setup-git, the work Mac already set up"
 
-# GitLab refusing the upload because it has the key is success. Any other
-# refusal stops setup-git before it writes the identity.
-sg_case upload work
-sg_run upload GIT_EMAIL=work@example.com GIT_PROFILES= SG_GLAB_ADD=taken sh "$root/bin/setup-git" \
-  || fail "setup-git failed on a key GitLab already has: $(cat "$sg/upload/out")"
-grep -qxF "glab ssh-key add $sg/upload/home/.ssh/id_ed25519_gitlab.pub --title $sg_host --usage-type auth_and_signing" \
-  "$sg/upload/log" || fail "setup-git never tried the GitLab upload: $(cat "$sg/upload/log")"
-sg_case upload work
-sg_run upload GIT_EMAIL=work@example.com GIT_PROFILES= SG_GLAB_ADD=fail sh "$root/bin/setup-git" \
-  && fail "setup-git passed a failed GitLab upload"
-grep -qF '401 Unauthorized' "$sg/upload/out" || fail "setup-git hid GitLab's refusal: $(cat "$sg/upload/out")"
-[ -e "$sg/upload/home/.gitconfig-local" ] && fail "setup-git wrote ~/.gitconfig-local after a failed GitLab upload"
-ok "setup-git, the GitLab upload"
+# Every refused upload stops setup-git before it writes the identity, a
+# duplicate included. The list check reads the whole account, so a duplicate
+# can only be this key on another account.
+for refusal in 'taken:has already been taken' 'fail:401 Unauthorized'; do
+  sg_case upload work
+  sg_run upload GIT_EMAIL=work@example.com GIT_PROFILES= SG_GLAB_ADD="${refusal%%:*}" sh "$root/bin/setup-git" \
+    && fail "setup-git passed a GitLab upload refused with '${refusal#*:}'"
+  grep -qxF "glab ssh-key add $sg/upload/home/.ssh/id_ed25519_gitlab.pub --title $sg_host --usage-type auth_and_signing" \
+    "$sg/upload/log" || fail "setup-git never tried the GitLab upload: $(cat "$sg/upload/log")"
+  grep -qF "${refusal#*:}" "$sg/upload/out" || fail "setup-git hid GitLab's refusal: $(cat "$sg/upload/out")"
+  [ -e "$sg/upload/home/.gitconfig-local" ] && fail "setup-git wrote ~/.gitconfig-local after a refused GitLab upload"
+done
+ok "setup-git, a refused GitLab upload"
 
 # The installer through to its last step, against the stub mise. A personal
 # Mac never calls glab and gets no GitLab key.
@@ -836,14 +836,15 @@ gh ssh-key add $h/.ssh/id_ed25519_github.pub --type authentication --title $sg_h
 gh ssh-key list
 gh ssh-key add $h/.ssh/id_ed25519_github.pub --type signing --title $sg_host
 glab config get user --host gitlab.com
-glab ssh-key list
+glab ssh-key list --per-page 100
 glab ssh-key add $h/.ssh/id_ed25519_gitlab.pub --title $sg_host --usage-type auth_and_signing
 gh config set git_protocol ssh
 gh api meta --jq .ssh_keys[]"
 grep -qxF "	signingkey = $h/.ssh/id_ed25519_gitlab.pub" "$h/.gitconfig-local" \
   || fail "setup-git install-work: ~/.gitconfig-local does not sign with the GitLab key"
+# The rerun names no env and has no terminal, so only miserc can answer.
 before=$(sg_snap install-work)
-sg_install install-work DOTFILES_WORK=1 GIT_EMAIL=work@example.com \
+sg_install install-work GIT_EMAIL=work@example.com \
   || fail "install.sh work rerun exited nonzero: $(cat "$sg/install-work/out")"
 sg_log_is install-work "sudo -v
 mise x github-cli -- gh auth status
@@ -855,6 +856,30 @@ $(sg_install_tail install-work)"
 sg_rerun_quiet "$@"
 grep -qF "$sg_note" "$sg/install-work/out" && fail "setup-git install-work printed the note on a rerun"
 ok "install.sh and setup-git, the work Mac"
+
+# miserc is the one answer to which Mac this is. DOTFILES_WORK only seeds it,
+# so one that contradicts it, a miserc env naming neither or both, or a DOTFILES_WORK
+# that is neither 1 nor 0 stops the installer before the password prompt.
+for conflict in \
+  'personal:DOTFILES_WORK=1:DOTFILES_WORK=1, but' \
+  'work:DOTFILES_WORK=0:DOTFILES_WORK=0, but' \
+  'other:DOTFILES_WORK=1:sets env to neither work nor personal' \
+  'work", "personal:DOTFILES_WORK=1:names both work and personal' \
+  ':DOTFILES_WORK=yes:DOTFILES_WORK must be 1 or 0'
+do
+  miserc_env=${conflict%%:*} rest=${conflict#*:}
+  sg_case install-conflict "$miserc_env"
+  before=$(sg_snap install-conflict)
+  sg_install install-conflict "${rest%%:*}" GIT_EMAIL=e@example.com \
+    && fail "install.sh ran with miserc env '$miserc_env' and ${rest%%:*}"
+  grep -qF "${rest#*:}" "$sg/install-conflict/out" \
+    || fail "install.sh stopped without saying '${rest#*:}': $(cat "$sg/install-conflict/out")"
+  sg_log_is install-conflict ""
+  # sg_install adds the stub mise, which is the case's own file, not the installer's.
+  [ "$(sg_snap install-conflict | grep -v '/.local/bin/mise$')" = "$before" ] \
+    || fail "install.sh changed files before stopping on miserc env '$miserc_env' and ${rest%%:*}"
+done
+ok "install.sh, miserc decides the env"
 
 out=$(HOME=$tmp_home DOTFILES=$root DOTFILES_WORK=0 GIT_NAME=Test GIT_EMAIL=test@example.com GIT_PROFILES= \
   sh install.sh --dry-run) || fail "install.sh --dry-run"

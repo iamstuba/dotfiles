@@ -58,6 +58,45 @@ ask() {
 
 say "Attended phase: a few prompts, then you can leave."
 
+# miserc is the one answer to which Mac this is: mise loads the overlay it
+# names, setup-git reads it, and so do the GitLab steps below. The work
+# question, or DOTFILES_WORK, only seeds it on a Mac whose miserc sets no env.
+# Settled first, so a contradiction stops before the password prompt.
+case "${DOTFILES_WORK:-}" in "" | 0 | 1) ;; *) die "DOTFILES_WORK must be 1 or 0, not $DOTFILES_WORK" ;; esac
+miserc=$HOME/.config/mise/miserc.toml
+if grep -qs '^env *=.*"work"' "$miserc" && grep -qs '^env *=.*"personal"' "$miserc"; then
+  die "$miserc names both work and personal; keep one"
+elif grep -qs '^env *=.*"work"' "$miserc"; then
+  machine_env=work
+elif grep -qs '^env *=.*"personal"' "$miserc"; then
+  machine_env=personal
+elif grep -qs '^env *=' "$miserc"; then
+  die "$miserc sets env to neither work nor personal; fix it by hand"
+else
+  machine_env=
+fi
+if [ -n "$machine_env" ]; then
+  case "${DOTFILES_WORK:-}:$machine_env" in
+    1:personal | 0:work) die "DOTFILES_WORK=$DOTFILES_WORK, but $miserc says $machine_env; fix one of them" ;;
+  esac
+else
+  if [ -z "${DOTFILES_WORK:-}" ]; then
+    [ -t 0 ] || die "DOTFILES_WORK is unset and there is no terminal to ask"
+    printf 'Is this a work Mac (loads the work overlay)? [y/N] '
+    read -r answer
+    case "$answer" in y | Y | yes) DOTFILES_WORK=1 ;; *) DOTFILES_WORK=0 ;; esac
+  fi
+  # Every Mac gets exactly one env: mise.personal.toml carries what a work Mac
+  # must not get, since mise cannot switch off an entry mise.toml declares.
+  if [ "$DOTFILES_WORK" = 1 ]; then machine_env=work; else machine_env=personal; fi
+  if [ "${DRY_RUN:-}" ]; then
+    echo "+ write env = [\"$machine_env\"] to $miserc"
+  else
+    mkdir -p "$HOME/.config/mise"
+    printf 'env = ["%s"]\n' "$machine_env" >>"$miserc"
+  fi
+fi
+
 # One password covers the CLT, /opt/homebrew and, on a personal Mac, the GarageBand loops.
 run sudo -v
 if [ -z "${DRY_RUN:-}" ]; then
@@ -89,30 +128,7 @@ if [ -z "${GIT_PROFILES+set}" ]; then
 fi
 export GIT_NAME GIT_EMAIL GIT_PROFILES
 
-# MISE_ENV lives in mise's early-init file, never in a shell rc.
-if [ -z "${DOTFILES_WORK:-}" ]; then
-  [ -t 0 ] || die "DOTFILES_WORK is unset and there is no terminal to ask"
-  printf 'Is this a work Mac (loads the work overlay)? [y/N] '
-  read -r answer
-  case "$answer" in y | Y | yes) DOTFILES_WORK=1 ;; *) DOTFILES_WORK=0 ;; esac
-fi
-# Every Mac gets exactly one env: mise.personal.toml carries what a work Mac
-# must not get, since mise cannot switch off an entry mise.toml declares.
-if [ "$DOTFILES_WORK" = 1 ]; then machine_env=work; else machine_env=personal; fi
-miserc=$HOME/.config/mise/miserc.toml
-if grep -qs "^env *=.*\"$machine_env\"" "$miserc"; then
-  :
-elif grep -qs '^env *=' "$miserc"; then
-  # A second env key would be invalid TOML and stop mise loading config.
-  echo "install: $miserc already sets env; add \"$machine_env\" to it by hand"
-elif [ "${DRY_RUN:-}" ]; then
-  echo "+ write env = [\"$machine_env\"] to $miserc"
-else
-  mkdir -p "$HOME/.config/mise"
-  printf 'env = ["%s"]\n' "$machine_env" >>"$miserc"
-fi
-
-# Only after the work question, so a personal Mac never logs into GitLab. A
+# Work only, by miserc, so a personal Mac never logs into GitLab. A
 # login on a host with credentials always asks to re-authenticate, so check first.
 if [ "$machine_env" = work ]; then
   if [ "${DRY_RUN:-}" ]; then

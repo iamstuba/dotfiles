@@ -137,16 +137,14 @@ if [ "$machine_env" = work ]; then
     run glab auth login --hostname gitlab.com --web -g ssh
   fi
   [ -f "$gitlab_key" ] || make_key "$gitlab_key"
-  # GitLab refuses a key it already has, which is success, as for gh.
+  # glab lists 30 keys a page by default, so one page of 100 reads the whole
+  # account. GitLab key fingerprints are unique across gitlab.com, so after a
+  # full list a refused upload means another account holds this key, and
+  # set -e stops here with glab's error.
   gitlab_pub=$(cut -d' ' -f2 "$gitlab_key.pub" 2>/dev/null || true)
-  if [ -z "$gitlab_pub" ] || [ -n "${DRY_RUN:-}" ] || ! glab ssh-key list 2>/dev/null | grep -qF "$gitlab_pub"; then
-    if ! out=$(run glab ssh-key add "$gitlab_key.pub" --title "$(hostname)" --usage-type auth_and_signing 2>&1); then
-      case "$out" in
-        *"has already been taken"*) ;;
-        *) die "$out" ;;
-      esac
-    fi
-    [ -z "$out" ] || printf '%s\n' "$out"
+  if [ -z "$gitlab_pub" ] || [ -n "${DRY_RUN:-}" ] \
+    || ! glab ssh-key list --per-page 100 2>/dev/null | grep -qF "$gitlab_pub"; then
+    run glab ssh-key add "$gitlab_key.pub" --title "$(hostname)" --usage-type auth_and_signing
   fi
 fi
 
