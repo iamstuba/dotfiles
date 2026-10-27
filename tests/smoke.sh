@@ -1601,8 +1601,15 @@ startup = cfg.get("after-startup-command", [])
 if len(startup) != 1:
     errs.append(f"{src}: after-startup-command has {len(startup)} entries, expected 1")
 else:
-    m = re.fullmatch(r"exec-and-forget source ~/\.config/sketchybar/colors\.sh && (.*)", startup[0])
-    args = m.group(1).split() if m else []
+    # The whole kill and wait, so a dropped bound or a lone pgrep cannot pass.
+    stop = ("pkill -x borders; for _ in {1..20}; do pgrep -qx borders || break; "
+            "sleep 0.1; done; ")
+    m = re.fullmatch(r"exec-and-forget (.*?)source ~/\.config/sketchybar/colors\.sh && (.*)",
+                     startup[0])
+    if m and m.group(1) != stop:
+        errs.append(f"{src}: after-startup-command does not stop an earlier borders "
+                    "and wait for it to exit")
+    args = m.group(2).split() if m else []
     if not args or args[0] != "borders" \
             or "active_color=$ACCENT" not in args or "inactive_color=$GUTTER" not in args:
         errs.append(f"{src}: after-startup-command does not source the palette and start borders "

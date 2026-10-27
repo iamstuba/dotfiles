@@ -3,8 +3,11 @@
 config-version = 2
 
 # Borders takes its colours from the bar's palette so the two never drift.
+# A `borders` process survives a logout, and the next login starts a second
+# one. A `borders` that finds another running sends it its flags and exits.
+# So the old one is stopped first, and the line waits until it has exited.
 after-startup-command = [
-  'exec-and-forget source ~/.config/sketchybar/colors.sh && borders style=round width=6 hidpi=on active_color=$ACCENT inactive_color=$GUTTER',
+  'exec-and-forget pkill -x borders; for _ in {1..20}; do pgrep -qx borders || break; sleep 0.1; done; source ~/.config/sketchybar/colors.sh && borders style=round width=6 hidpi=on active_color=$ACCENT inactive_color=$GUTTER',
 ]
 
 start-at-login = true
