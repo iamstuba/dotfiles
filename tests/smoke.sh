@@ -2142,9 +2142,29 @@ if [ -f "$BAR_FIX/$name" ]; then cat "$BAR_FIX/$name"; fi
 exit "$(cat "$BAR_FIX/$name.exit" 2>/dev/null || echo 0)"
 EOF
 done
+# aerospace answers each query from its own fixture, so one case can set the
+# windows, the focus and the event stream apart. A hold file keeps subscribe
+# open after its events, the way a live AeroSpace does, and records its pid.
+cat >"$bar/stubs/aerospace" <<'EOF'
+#!/bin/sh
+echo "aerospace $*" >>"$BAR_LOG"
+case "$1 $2" in
+  "subscribe "*) key=subscribe ;;
+  "list-windows --all") key=windows ;;
+  "list-windows --focused") key=focused-window ;;
+  "list-workspaces --focused") key=focused-workspace ;;
+  *) key=other ;;
+esac
+if [ -f "$BAR_FIX/aerospace.$key" ]; then cat "$BAR_FIX/aerospace.$key"; fi
+if [ "$key" = subscribe ] && [ -f "$BAR_FIX/aerospace.subscribe.hold" ]; then
+  echo $$ >"$BAR_FIX/aerospace.subscribe.pid"
+  exec sleep 30
+fi
+exit "$(cat "$BAR_FIX/aerospace.$key.exit" 2>/dev/null || echo 0)"
+EOF
 chmod +x "$bar"/stubs/*
 
-bar_reset() { rm -rf "$bar/fix"; mkdir "$bar/fix"; : >"$bar/log"; }
+bar_reset() { rm -rf "$bar/fix" "$bar/tmp"; mkdir "$bar/fix" "$bar/tmp"; : >"$bar/log"; }
 bar_fixture() { # $1: command, $2: what it prints, $3: its exit code
   printf '%s\n' "$2" >"$bar/fix/$1"
   echo "${3:-0}" >"$bar/fix/$1.exit"
@@ -2153,7 +2173,7 @@ bar_run() { # $1: case, $2: script under config/sketchybar, $3: NAME, then its a
   # BAR_SB_EXIT, when set, is the exit code of every sketchybar call.
   bar_case=$1 bar_script=$2 bar_name=$3
   shift 3
-  env -i HOME="$bar" PATH="$bar/stubs:/usr/bin:/bin" CONFIG_DIR="$root/$bar_dir" \
+  env -i HOME="$bar" PATH="$bar/stubs:/usr/bin:/bin" CONFIG_DIR="$root/$bar_dir" TMPDIR="$bar/tmp/" \
     NAME="$bar_name" SENDER=routine BAR_LOG="$bar/log" BAR_FIX="$bar/fix" BAR_SB_EXIT="${BAR_SB_EXIT:-0}" \
     "$root/$bar_dir/$bar_script" "$@" 2>"$bar/err" || fail "bar: $bar_case exited nonzero"
   if [ -s "$bar/err" ]; then fail "bar: $bar_case wrote to stderr: $(cat "$bar/err")"; fi
@@ -2162,8 +2182,19 @@ bar_log_is() { # $1: the log the last bar_run must have written
   [ "$(cat "$bar/log")" = "$1" ] || fail "bar: $bar_case logged:
 $(cat "$bar/log")"
 }
+bar_gone() { # $1: a pid; true once it has exited, within 3 s
+  bar_i=0
+  while [ $bar_i -lt 30 ]; do
+    case $(ps -o stat= -p "$1") in '' | Z*) return 0 ;; esac
+    sleep 0.1
+    bar_i=$((bar_i + 1))
+  done
+  return 1
+}
 bar_color() { env -i /bin/sh -c '. "./$1" && eval "echo \$$2"' sh $bar_dir/colors.sh "$1"; }
-bar_fg=$(bar_color FG) bar_red=$(bar_color RED)
+bar_fg=$(bar_color FG) bar_red=$(bar_color RED) bar_grey=$(bar_color GREY)
+bar_accent=$(bar_color ACCENT) bar_dark=$(bar_color BAR_COLOR) bar_pill=$(bar_color PILL_BG)
+bar_orange=$(bar_color ORANGE)
 
 # The Wi-Fi port is en7 here, so a hard-coded en0 fails.
 bar_reset
@@ -2175,6 +2206,14 @@ Hardware Port: Wi-Fi
 Device: en7
 Ethernet Address: fc:b2:14:af:90:c5'
 bar_run sketchybarrc sketchybarrc ""
+# The rc starts the event loop in the background. With no events it ends at
+# once, and the test reads the log only after it has.
+bar_i=0
+until grep -q '^aerospace subscribe' "$bar/log" || [ $bar_i -ge 30 ]; do sleep 0.1; bar_i=$((bar_i + 1)); done
+if bar_loop=$(cat "$bar/tmp/sketchybar-aerospace-events.pid" 2>/dev/null); then
+  bar_gone "$bar_loop" || fail "bar: the event loop sketchybarrc started never ended"
+fi
+if [ -s "$bar/err" ]; then fail "bar: sketchybarrc's event loop wrote to stderr: $(cat "$bar/err")"; fi
 BAR_LOG=$bar/log CONFIG_DIR=$root/$bar_dir BAR_COLOR=$(bar_color BAR_COLOR) FG=$bar_fg \
 python3 - <<'BAR' || fail "bar: sketchybarrc"
 import os, shlex, sys
@@ -2182,8 +2221,12 @@ errs = []
 plugins = os.environ["CONFIG_DIR"] + "/plugins"
 lines = open(os.environ["BAR_LOG"]).read().splitlines()
 others = [l for l in lines if not l.startswith("sketchybar ")]
-if others != ["networksetup -listallhardwareports"]:
-    errs.append(f"ran {others}, expected only networksetup -listallhardwareports")
+subscribe = "aerospace subscribe focus-changed focused-workspace-changed mode-changed"
+if others != ["networksetup -listallhardwareports", subscribe]:
+    errs.append(f"ran {others}, expected networksetup -listallhardwareports and the event loop's {subscribe}")
+# The loop's first --set fails on an item not yet added, and that ends it.
+elif max(i for i, l in enumerate(lines) if " --add " in l) > lines.index(subscribe):
+    errs.append("the event loop starts before every item is added")
 
 def pairs(args):
     out = {}
@@ -2237,7 +2280,16 @@ for k, v in want_defaults.items():
         errs.append(f"default {k} is {defaults.get(k)!r}, expected {v!r}")
 
 wifi_click = "open 'x-apple.systempreferences:com.apple.wifi-settings-extension'"
-want = [
+app_font = "sketchybar-app-font:Regular:14.0"
+# Only workspace.1 polls, and its run redraws all five.
+want = [("workspace.1", "left", {"update_freq": "10", "script": f"{plugins}/workspaces.sh",
+                                 "click_script": "aerospace workspace 1", "label.font": app_font}, [])]
+want += [(f"workspace.{n}", "left", {"click_script": f"aerospace workspace {n}", "label.font": app_font}, [])
+         for n in range(2, 6)]
+# Both stay hidden until the loop's first event. q is left of the notch.
+want += [
+    ("mode", "left", {"drawing": "off"}, []),
+    ("front_app", "q", {"drawing": "off", "label.max_chars": "60", "scroll_texts": "off"}, []),
     ("clock", "right", {"update_freq": "30", "script": f"{plugins}/clock.sh"}, []),
     ("wifi", "right", {"update_freq": "60", "script": f"{plugins}/wifi.sh en7",
                        "click_script": wifi_click}, ["wifi_change", "system_woke"]),
@@ -2250,7 +2302,8 @@ want = [
 ]
 if list(items) != [w[0] for w in want]:
     errs.append(f"items are {list(items)}, expected {[w[0] for w in want]}")
-wiring = ("update_freq", "script", "click_script", "drawing")
+wiring = ("update_freq", "script", "click_script", "drawing", "label.font", "label.max_chars",
+          "scroll_texts")
 for name, position, props, events in want:
     item = items.get(name)
     if item is None:
@@ -2263,7 +2316,7 @@ for name, position, props, events in want:
     if item["events"] != events:
         errs.append(f"{name} subscribes to {item['events']}, expected {events}")
     script = item["props"].get("script", "").split(" ")[0]
-    if not os.access(script, os.X_OK):
+    if script and not os.access(script, os.X_OK):
         errs.append(f"{name}'s script {script} is not an executable file")
 
 for e in errs:
@@ -2375,6 +2428,94 @@ bar_fixture pgrep '' 1
 bar_run "watchdog, AeroSpace gone" plugins/watchdog.sh watchdog
 bar_log_is "pgrep -aqx AeroSpace
 sketchybar --exit"
+
+# Windows on 1, 3 and 5 with 3 focused. Slack has two windows on 1 and shows
+# once, and an app the map lacks falls back to :default:.
+bar_windows='1|Slack
+3|Ghostty
+1|Google Chrome
+5|Nonexistent App
+1|Slack'
+# Each pill gets one --set for these windows.
+bar_pills="--set workspace.1 background.color=$bar_pill icon.color=$bar_fg label.color=$bar_fg 'label=:slack: :google_chrome:' label.drawing=on"
+bar_pills="$bar_pills --set workspace.2 background.color=$bar_pill icon.color=$bar_grey label.drawing=off"
+bar_pills="$bar_pills --set workspace.3 background.color=$bar_accent icon.color=$bar_dark label.color=$bar_dark label=:ghostty: label.drawing=on"
+bar_pills="$bar_pills --set workspace.4 background.color=$bar_pill icon.color=$bar_grey label.drawing=off"
+bar_pills="$bar_pills --set workspace.5 background.color=$bar_pill icon.color=$bar_fg label.color=$bar_fg label=:default: label.drawing=on"
+bar_reset
+bar_fixture aerospace.windows "$bar_windows"
+bar_fixture aerospace.focused-workspace 3
+bar_run "workspaces" plugins/workspaces.sh workspace.1
+bar_log_is "aerospace list-windows --all --format %{workspace}|%{app-name}
+aerospace list-workspaces --focused
+sketchybar $bar_pills"
+# AeroSpace not answering leaves the pills as they were.
+bar_reset
+bar_fixture aerospace.windows '' 1
+bar_run "workspaces, aerospace failing" plugins/workspaces.sh workspace.1
+bar_log_is "aerospace list-windows --all --format %{workspace}|%{app-name}"
+
+bar_sb_log_is() { # $1: the sketchybar calls the last bar_run must have made
+  [ "$(grep '^sketchybar ' "$bar/log")" = "$1" ] || fail "bar: $bar_case logged:
+$(cat "$bar/log")"
+}
+# A paused AeroSpace sends mode-changed with no mode at all.
+bar_reset
+bar_fixture aerospace.subscribe '{"_event":"focus-changed","windowId":6772,"workspace":"3"}
+{"_event":"mode-changed","mode":"service"}
+{"_event":"mode-changed"}
+{"_event":"mode-changed","mode":"main"}
+{"_event":"focused-workspace-changed","prevWorkspace":"1","workspace":"3"}'
+bar_fixture aerospace.windows "$bar_windows"
+bar_fixture aerospace.focused-workspace 3
+bar_fixture aerospace.focused-window "Ghostty|it's \$(true); vim"
+bar_run "event loop" plugins/aerospace_events.sh ""
+grep -qx 'aerospace subscribe focus-changed focused-workspace-changed mode-changed' "$bar/log" \
+  || fail "bar: the event loop does not subscribe to focus, workspace and mode: $(cat "$bar/log")"
+bar_front="--set front_app drawing=on 'label=Ghostty: it'\"'\"'s \$(true); vim'"
+bar_sb_log_is "sketchybar $bar_pills $bar_front
+sketchybar --set mode drawing=on label=SERVICE background.color=$bar_orange
+sketchybar --set mode drawing=on label=PAUSED background.color=$bar_red
+sketchybar --set mode drawing=off
+sketchybar $bar_pills $bar_front"
+bar_reset
+bar_fixture aerospace.subscribe '{"_event":"focused-workspace-changed","prevWorkspace":"3","workspace":"4"}'
+bar_fixture aerospace.windows "$bar_windows"
+bar_fixture aerospace.focused-workspace 3
+bar_fixture aerospace.focused-window '' 1
+bar_run "event loop, nothing focused" plugins/aerospace_events.sh ""
+bar_sb_log_is "sketchybar $bar_pills --set front_app drawing=off"
+bar_reset
+bar_fixture aerospace.subscribe '{"_event":"focus-changed","windowId":6772,"workspace":"3"}'
+bar_fixture aerospace.windows "$bar_windows"
+bar_fixture aerospace.focused-workspace 3
+bar_fixture aerospace.focused-window 'Ghostty|'
+bar_run "event loop, a window with no title" plugins/aerospace_events.sh ""
+bar_sb_log_is "sketchybar $bar_pills --set front_app drawing=on label=Ghostty"
+# The bar refusing a command means it has quit, so the loop must not outlive it.
+bar_reset
+bar_fixture aerospace.subscribe '{"_event":"mode-changed","mode":"main"}
+{"_event":"mode-changed","mode":"service"}'
+BAR_SB_EXIT=1 bar_run "event loop, bar gone" plugins/aerospace_events.sh ""
+bar_sb_log_is "sketchybar --set mode drawing=off"
+
+# A reload starts a second loop while the first still runs. The first must
+# end and kill its subscribe, or every event draws twice.
+bar_reset
+: >"$bar/fix/aerospace.subscribe.hold"
+env -i HOME="$bar" PATH="$bar/stubs:/usr/bin:/bin" CONFIG_DIR="$root/$bar_dir" TMPDIR="$bar/tmp/" \
+  NAME="" SENDER=routine BAR_LOG="$bar/log" BAR_FIX="$bar/fix" BAR_SB_EXIT=0 \
+  "$root/$bar_dir/plugins/aerospace_events.sh" 2>"$bar/err.first" &
+bar_first=$!
+bar_i=0
+until [ -s "$bar/fix/aerospace.subscribe.pid" ] || [ $bar_i -ge 30 ]; do sleep 0.1; bar_i=$((bar_i + 1)); done
+bar_first_sub=$(cat "$bar/fix/aerospace.subscribe.pid") || fail "bar: the first event loop never subscribed"
+rm "$bar/fix/aerospace.subscribe.hold"
+bar_run "event loop, a second copy" plugins/aerospace_events.sh ""
+if ! bar_gone "$bar_first"; then kill "$bar_first"; fail "bar: a second event loop left the first running"; fi
+wait "$bar_first" || true
+bar_gone "$bar_first_sub" || fail "bar: the first event loop's subscribe outlived it"
+if [ -s "$bar/err.first" ]; then fail "bar: the first event loop wrote to stderr: $(cat "$bar/err.first")"; fi
 ok "bar"
 
 # Ghostty's file, read by Ghostty. validate-config rejects an unknown key, a

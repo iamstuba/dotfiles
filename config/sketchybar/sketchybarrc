@@ -20,6 +20,28 @@ sketchybar --default \
 wifi_device=$(networksetup -listallhardwareports \
   | awk '/^Hardware Port: Wi-Fi$/ { getline; print $2; exit }')
 
+# The pills show their number as the icon and their apps as app-font
+# ligatures in the label. The event loop colours them. AeroSpace sends no
+# event for a window closing elsewhere, so workspace.1 also polls and redraws
+# all five.
+pills=()
+for ws in 1 2 3 4 5; do
+  pills+=(--add item "workspace.$ws" left
+    --set "workspace.$ws" icon="$ws" icon.font="Monaspace Neon:Regular:13.0" icon.color="$GREY"
+      icon.padding_left=8 icon.padding_right=8
+      label.font="sketchybar-app-font:Regular:14.0" label.padding_left=0 label.padding_right=8
+      label.drawing=off background.color="$PILL_BG" background.corner_radius=6
+      background.height=24 click_script="aerospace workspace $ws")
+done
+# The notch covers center, so the focused window goes at q, left of it.
+sketchybar "${pills[@]}" \
+  --set workspace.1 update_freq=10 script="$plugins/workspaces.sh" \
+  --add item mode left \
+  --set mode drawing=off label.color="$BAR_COLOR" label.padding_left=8 label.padding_right=8 \
+    background.corner_radius=6 background.height=24 \
+  --add item front_app q \
+  --set front_app drawing=off label.max_chars=60 scroll_texts=off
+
 # Right items stack leftwards in the order added, so the clock is at the edge.
 sketchybar \
   --add item clock right \
@@ -37,5 +59,9 @@ sketchybar \
   --set cpu update_freq=5 script="$plugins/cpu.sh" \
   --add item watchdog right \
   --set watchdog drawing=off update_freq=10 script="$plugins/watchdog.sh"
+
+# The loop starts after the items exist, since a --set on a missing item ends
+# it. It ends an older copy of itself, so a reload leaves one.
+"$plugins/aerospace_events.sh" &
 
 sketchybar --update
