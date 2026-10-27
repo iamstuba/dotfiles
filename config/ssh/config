@@ -5,6 +5,13 @@ Host github.com
   IdentityFile ~/.ssh/id_ed25519_github
   IdentitiesOnly yes
 
+# The work Mac's key for gitlab.com auth and signing. The installer makes it
+# and setup-git registers it. A personal Mac has no such file and never
+# connects to gitlab.com.
+Host gitlab.com
+  IdentityFile ~/.ssh/id_ed25519_gitlab
+  IdentitiesOnly yes
+
 Host *
   UseKeychain yes
   AddKeysToAgent yes

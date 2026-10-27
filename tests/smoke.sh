@@ -86,8 +86,19 @@ if "tools" in global_cfg and next(iter(global_cfg["tools"])) != "node":
     errs.append("node must be the first tool so npm: tools run on it")
 if "tools" in root:
     errs.append("repo-root file carries tools; they are only on PATH inside the clone")
-if set(work) - {"tools", "bootstrap"}:
-    errs.append(f"overlay carries unexpected tables: {sorted(set(work) - {'tools', 'bootstrap'})}")
+if set(work) - {"tools", "bootstrap", "env"}:
+    errs.append(f"overlay carries unexpected tables: {sorted(set(work) - {'tools', 'bootstrap', 'env'})}")
+# Only the work Mac uses gitlab.com, so glab and its env live in this overlay
+# and nowhere a personal Mac loads.
+if work.get("tools", {}).get("gitlab:gitlab-org/cli") != "latest":
+    errs.append("work overlay does not declare \"gitlab:gitlab-org/cli\" = \"latest\", so the work Mac has no glab")
+if work.get("env", {}).get("GLAB_SEND_TELEMETRY") != "0":
+    errs.append("work overlay does not set GLAB_SEND_TELEMETRY = \"0\", so glab reports usage")
+if work.get("env", {}).get("GLAB_CONFIG_DIR") != "{{ env.HOME }}/.config/glab-cli":
+    errs.append("work overlay does not pin GLAB_CONFIG_DIR to ~/.config/glab-cli, so a GUI-launched glab misses the login")
+for p in sorted([*pathlib.Path(".").glob("mise*.toml"), *pathlib.Path("config/mise").glob("*.toml")]):
+    if p != pathlib.Path("config/mise/config.work.toml") and "gitlab:" in p.read_text():
+        errs.append(f"{p} names gitlab:, which belongs only in config/mise/config.work.toml")
 if set(root_work) - {"bootstrap", "dotfiles"}:
     errs.append(f"repo-root overlay carries more than packages and its link: {sorted(set(root_work) - {'bootstrap', 'dotfiles'})}")
 # Its one row links the global overlay. Any other row belongs in mise.toml or
@@ -923,6 +934,33 @@ LOCAL
 else
   printf 'skip git config: git is not on PATH\n'
 fi
+
+# ssh offers github.com and gitlab.com each its own key and nothing else.
+# ssh_config takes the first value per keyword, so a host stanza after Host *
+# loses any keyword Host * ever sets.
+host_at() {
+  # The first line number of an exact Host line, or nothing.
+  awk -v h="Host $1" '$0 == h { print NR; exit }' config/ssh/config
+}
+github_at=$(host_at github.com) gitlab_at=$(host_at gitlab.com) any_at=$(host_at '*')
+[ -n "$github_at" ] && [ -n "$gitlab_at" ] && [ -n "$any_at" ] \
+  || fail "ssh: config/ssh/config lacks a Host github.com, Host gitlab.com or Host * line"
+[ "$github_at" -lt "$gitlab_at" ] && [ "$gitlab_at" -lt "$any_at" ] \
+  || fail "ssh: the stanzas are not in the order github.com, gitlab.com, *"
+# ssh -G resolves the config as a connection would and opens no key, so the
+# answer is the same on a Mac without ~/.ssh/id_ed25519_gitlab. ssh takes ~
+# from the passwd entry, not HOME, so a temp HOME would change nothing. -T
+# stops the pseudo-terminal warning a pipe would print.
+for forge in github gitlab; do
+  ssh_resolved=$(ssh -T -G "$forge.com" -F config/ssh/config </dev/null) \
+    || fail "ssh: ssh -G $forge.com exits non-zero"
+  ids=$(printf '%s\n' "$ssh_resolved" | grep '^identityfile ' || true)
+  [ "$ids" = "identityfile ~/.ssh/id_ed25519_$forge" ] \
+    || fail "ssh: $forge.com is offered $(printf '%s' "${ids:-nothing}" | tr '\n' ' '), not just ~/.ssh/id_ed25519_$forge"
+  printf '%s\n' "$ssh_resolved" | grep -qx 'identitiesonly yes' \
+    || fail "ssh: $forge.com lacks IdentitiesOnly yes, so the agent offers every key it holds"
+done
+ok "ssh host stanzas"
 
 # Tracked config files, through one probe. Each names dotted paths and the value
 # it expects, so a missing path and a changed value fail separately.
@@ -1923,7 +1961,8 @@ tools_map() {
   # listed. Only the commands a tool is wanted for are asserted, so pnpm's pn,
   # pnpx and pnx and node's corepack, npm and npx are left out. yq joined
   # [tools] after that run, with the parser swap above; its release archive
-  # carries one binary and it is named yq.
+  # carries one binary and it is named yq. glab was installed the same way on
+  # 2026-10-27 with mise 2026.10.15, and its one binary is glab.
   #
   # An exception carries `-` in place of its commands and a reason after a #.
   # There are none. If this list ever reaches two or three, the rule that
@@ -1946,6 +1985,7 @@ github:agavra/tuicr tuicr
 delta delta
 lazygit lazygit
 github-cli gh
+gitlab:gitlab-org/cli glab
 aqua:neovim/neovim nvim
 stylua stylua
 lua-language-server lua-language-server
@@ -2037,4 +2077,35 @@ $personal_keys"
   ok "tools resolve ($asserted commands, $skipped exceptions)"
 else
   printf 'skip tools resolve: mise is not on PATH\n'
+fi
+
+# glab reads GLAB_CONFIG_DIR as given, so an unrendered "{{ env.HOME }}" would
+# send its login to a relative directory named after the template. The temp
+# HOME holds only the work overlay. Offline, because mise env otherwise asks
+# gitlab.com which version "latest" is; offline it warns and still renders.
+if command -v mise >/dev/null 2>&1; then
+  # Inside $tmp_home so the trap above already cleans it up.
+  env_home=$tmp_home/work-env
+  mkdir -p "$env_home/.config/mise"
+  ln -s "$root/config/mise/config.work.toml" "$env_home/.config/mise/config.work.toml"
+  work_env=$(unset XDG_CONFIG_HOME
+             cd "$env_home"
+             HOME=$env_home MISE_ENV=work MISE_CEILING_PATHS=$env_home MISE_OFFLINE=1 \
+               mise env --json 2>"$env_home/stderr") \
+    || fail "work env: mise env failed under the temp HOME: $(cat "$env_home/stderr")"
+  WORK_ENV=$work_env WANT_DIR=$env_home/.config/glab-cli python3 - <<'PY' || fail "work env"
+import json, os, sys
+env = json.loads(os.environ["WORK_ENV"])
+errs = []
+if env.get("GLAB_CONFIG_DIR") != os.environ["WANT_DIR"]:
+    errs.append(f"GLAB_CONFIG_DIR renders to {env.get('GLAB_CONFIG_DIR')!r}, not {os.environ['WANT_DIR']!r}")
+if env.get("GLAB_SEND_TELEMETRY") != "0":
+    errs.append(f"GLAB_SEND_TELEMETRY renders to {env.get('GLAB_SEND_TELEMETRY')!r}, not '0'")
+for e in errs:
+    print("  " + e, file=sys.stderr)
+sys.exit(1 if errs else 0)
+PY
+  ok "work env"
+else
+  printf 'skip work env: mise is not on PATH\n'
 fi

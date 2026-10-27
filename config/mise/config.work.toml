@@ -2,3 +2,15 @@
 # includes "work". The installer writes ~/.config/mise/miserc.toml with
 # env = ["work"] when told to; that file is never tracked. MISE_ENV
 # cannot live in a mise.toml because it decides which mise.toml files load.
+
+[tools]
+# Only the work Mac uses gitlab.com, so glab lives here. brew:glab is the
+# fallback; aqua's entry lists no versions and carries no checksum.
+"gitlab:gitlab-org/cli" = "latest"
+
+[env]
+# Telemetry doubles every request the bar's chip makes, and reports usage.
+GLAB_SEND_TELEMETRY = "0"
+# glab falls back to ~/Library/Application Support when XDG_CONFIG_HOME is
+# unset, as it is in the installer and a GUI-launched bar.
+GLAB_CONFIG_DIR = "{{ env.HOME }}/.config/glab-cli"
