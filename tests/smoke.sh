@@ -368,9 +368,25 @@ upd=$tmp_home/update-apps
 mkdir -p "$upd/stubs" "$upd/dotfiles/bin"
 : >"$upd/dotfiles/bin/brew-tap-packages"
 # Each stub logs its arguments, and the one named in UPD_FAIL exits 1.
-for name in osascript open mise sh; do
+for name in osascript open sh; do
   printf '#!/bin/sh\necho "%s $*" >>"$UPD_LOG"\n[ "$UPD_FAIL" != %s ]\n' "$name" "$name" >"$upd/stubs/$name"
 done
+# mise reads [bootstrap.packages] from the directory it starts in and its
+# parents, and finds none from ~, where it runs global tasks. The mise stub
+# checks only its start directory and marks a run there without the table, so
+# the log comparisons fail.
+printf '[bootstrap.packages]\n' >"$upd/dotfiles/mise.toml"
+cat >"$upd/stubs/mise" <<'EOF'
+#!/bin/sh
+dir=$PWD
+if [ "$1" = -C ]; then dir=$2; shift 2; fi
+if grep -qxF '[bootstrap.packages]' "$dir/mise.toml" 2>/dev/null; then
+  echo "mise $*" >>"$UPD_LOG"
+else
+  echo "mise $* without [bootstrap.packages]" >>"$UPD_LOG"
+fi
+[ "$UPD_FAIL" != mise ]
+EOF
 printf '#!/bin/sh\n' >"$upd/stubs/sleep"
 # The pgrep stub finds LibreWolf running on its first UPD_RUNNING_CHECKS calls.
 # It logs any other arguments, so a guard that lost -x or named another
@@ -387,8 +403,10 @@ upd_run=$(yq -r '.tasks."update:apps".run' config/mise/config.toml) || fail "upd
 update_apps() { # $1: how many pgrep calls find LibreWolf running, $2: the stub that fails
   : >"$upd/log"
   rm -f "$upd/count"
-  PATH=$upd/stubs:/usr/bin:/bin DOTFILES=$upd/dotfiles UPD_LOG=$upd/log UPD_COUNT=$upd/count \
-    UPD_RUNNING_CHECKS=$1 UPD_FAIL=${2:-} /bin/sh -o errexit -c "$upd_run" 2>"$upd/err"
+  # The task runs from $upd, which holds no mise.toml, like ~. The repo root
+  # would hide a task that never leaves the caller's directory.
+  (cd "$upd" && PATH=$upd/stubs:/usr/bin:/bin DOTFILES=$upd/dotfiles UPD_LOG=$upd/log UPD_COUNT=$upd/count \
+    UPD_RUNNING_CHECKS=$1 UPD_FAIL=${2:-} /bin/sh -o errexit -c "$upd_run" 2>"$upd/err")
 }
 upd_quit='osascript -e with timeout of 30 seconds -e tell application id "net.librewolf.librewolf" to quit -e end timeout'
 upd_mise='mise bootstrap packages upgrade --yes'

@@ -80,12 +80,14 @@ run = """
       waited=$((waited + 1))
     done
   fi
-  mise bootstrap packages upgrade --yes
-  # The tap packages are absent from [bootstrap.packages], so the line above
-  # cannot see them and nothing else upgrades them. The repo is resolved the
-  # way update:dotfiles resolves it: this is the global file, so {{ config_root }}
-  # here would be ~/.config/mise.
+  # update:dotfiles resolves the repo the same way. This is the global file, so
+  # {{ config_root }} here would be ~, not the repo.
   repo="${DOTFILES:-$HOME/Projects/iamstuba/dotfiles}"
+  # The task runs in ~, where mise finds no [bootstrap.packages] and upgrades
+  # nothing. From the repo, mise also reads the overlay that MISE_ENV names.
+  mise -C "$repo" bootstrap packages upgrade --yes
+  # The tap packages are absent from [bootstrap.packages], so the line above
+  # cannot see them and nothing else upgrades them.
   sh "$repo/bin/brew-tap-packages" upgrade
 """
 
