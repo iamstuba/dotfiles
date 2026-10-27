@@ -2365,13 +2365,15 @@ bar_reset
 bar_run "no wifi device" plugins/wifi.sh wifi
 bar_log_is "sketchybar --set wifi drawing=off"
 
+# AeroSpace starts the bar, so it is the watchdog's ancestor, and pgrep skips
+# ancestors without -a. Without it the bar quits the moment AeroSpace starts it.
 bar_reset
 bar_run "watchdog, AeroSpace running" plugins/watchdog.sh watchdog
-bar_log_is "pgrep -qx AeroSpace"
+bar_log_is "pgrep -aqx AeroSpace"
 bar_reset
 bar_fixture pgrep '' 1
 bar_run "watchdog, AeroSpace gone" plugins/watchdog.sh watchdog
-bar_log_is "pgrep -qx AeroSpace
+bar_log_is "pgrep -aqx AeroSpace
 sketchybar --exit"
 ok "bar"
 
