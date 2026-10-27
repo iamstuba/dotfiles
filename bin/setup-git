@@ -1,7 +1,7 @@
 #!/bin/sh
-# Local git identity, profiles, the one SSH key and SSH remotes. Run by
-# `mise run setup-git` and by the installer. Rerunnable: every step skips
-# what exists. --dry-run or DRY_RUN=1 prints.
+# Local git identity, profiles and their signing keys, the GitHub SSH key and
+# SSH remotes. Run by `mise run setup-git` and by the installer. Rerunnable:
+# every step skips what exists. --dry-run or DRY_RUN=1 prints.
 set -eu
 
 die() { echo "setup-git: $*" >&2; exit 1; }
@@ -9,7 +9,8 @@ case "${1:-}" in "") ;; --dry-run) DRY_RUN=1 ;; *) die "unknown argument $1" ;; 
 run() { if [ "${DRY_RUN:-}" ]; then printf '+ %s\n' "$*"; else "$@"; fi; }
 
 DOTFILES=${DOTFILES:-$HOME/Projects/iamstuba/dotfiles}
-key=$HOME/.ssh/id_ed25519_github
+github_key=$HOME/.ssh/id_ed25519_github
+gitlab_key=$HOME/.ssh/id_ed25519_gitlab
 scopes=admin:public_key,admin:ssh_signing_key
 
 # Identity: environment first, prompts second, never a hang without a TTY.
@@ -27,10 +28,66 @@ ask GIT_EMAIL "Git email"
 if [ -z "${GIT_PROFILES+set}" ]; then
   GIT_PROFILES=
   if [ -t 0 ]; then
-    printf 'Profiles as dir=email, comma separated, or empty: '
+    printf 'Profiles as dir=email[=github|gitlab], comma separated, or empty: '
     read -r GIT_PROFILES
   fi
 fi
+
+# miserc decides the env, as it does for mise. The installer writes it before
+# calling this, so a run by hand and a run from the installer agree.
+if grep -qs '^env *=.*"work"' "$HOME/.config/mise/miserc.toml"; then
+  machine_env=work
+  default_key=$gitlab_key
+else
+  machine_env=personal
+  default_key=$github_key
+fi
+
+# Sets dir, email, name and profile_key from one entry, or stops.
+parse_profile() {
+  dir=${1%%=*}
+  rest=${1#*=}
+  email=${rest%%=*}
+  key_name=github
+  [ "$dir" != "$1" ] && [ -n "$dir" ] && [ -n "$email" ] || die "profile '$1' is not dir=email"
+  if [ "$email" != "$rest" ]; then
+    key_name=${rest#*=}
+    case "$key_name" in *=*) die "profile '$1' has more than three fields" ;; esac
+  fi
+  case "$key_name" in
+    github) profile_key=$github_key ;;
+    gitlab)
+      [ "$machine_env" = work ] || die "profile '$1' names the GitLab key, which only the work Mac has"
+      profile_key=$gitlab_key ;;
+    *) die "profile '$1' names key '$key_name'; use github or gitlab" ;;
+  esac
+  name=$(basename "$dir" | tr '[:upper:]' '[:lower:]')
+}
+
+# Runs $1 once per entry with parse_profile's variables set. Globbing is off,
+# so an entry holding * or ? stays as typed and never matches a file name.
+each_profile() {
+  old_ifs=$IFS
+  IFS=,
+  set -f
+  for entry in $GIT_PROFILES; do
+    IFS=$old_ifs
+    entry=$(printf '%s' "$entry" | sed 's/^ *//; s/ *$//')
+    [ -n "$entry" ] || continue
+    parse_profile "$entry"
+    "$1"
+  done
+  set +f
+  IFS=$old_ifs
+}
+
+# Checked whole before any login, key or file, so a bad entry leaves the Mac as it was.
+seen=
+check_unique() {
+  case " $seen " in *" $name "*) die "two profiles would share ~/.gitconfig-$name; rename one directory" ;; esac
+  seen="${seen:-} $name"
+}
+each_profile check_unique
 
 # -p ssh keeps gh out of git's credential config; the key upload is ours.
 if ! gh auth status >/dev/null 2>&1; then
@@ -38,24 +95,25 @@ if ! gh auth status >/dev/null 2>&1; then
 fi
 
 # The installer normally made the key already, so the passphrase prompt came early.
-if [ ! -f "$key" ]; then
-  run ssh-keygen -t ed25519 -C "$GIT_EMAIL" -f "$key"
-  run ssh-add --apple-use-keychain "$key"
+if [ ! -f "$github_key" ]; then
+  run mkdir -p "$HOME/.ssh"
+  run ssh-keygen -t ed25519 -C "$GIT_EMAIL" -f "$github_key"
+  run ssh-add --apple-use-keychain "$github_key"
 fi
 
 # Registered twice, once per use. GitHub refuses a duplicate, so check first.
-pub=$(cut -d' ' -f2 "$key.pub" 2>/dev/null || true)
+pub=$(cut -d' ' -f2 "$github_key.pub" 2>/dev/null || true)
 register() {
   if [ -n "$pub" ] && [ -z "${DRY_RUN:-}" ] && gh ssh-key list 2>/dev/null | grep -F "$pub" | grep -q "$1"; then
     return 0
   fi
   # A duplicate is success, a scope refusal earns one retry, anything else is fatal.
-  if ! out=$(run gh ssh-key add "$key.pub" --type "$1" --title "$(hostname)" 2>&1); then
+  if ! out=$(run gh ssh-key add "$github_key.pub" --type "$1" --title "$(hostname)" 2>&1); then
     case "$out" in
       *already*) ;;
       *scope* | *admin:*)
         run gh auth refresh -s "$scopes"
-        run gh ssh-key add "$key.pub" --type "$1" --title "$(hostname)" ;;
+        run gh ssh-key add "$github_key.pub" --type "$1" --title "$(hostname)" ;;
       *) die "$out" ;;
     esac
   fi
@@ -77,29 +135,48 @@ write() {
   fi
 }
 
+# Appended, never inserted: an include after [user] is what lets the profile
+# win inside its directory.
+append() {
+  if [ "${DRY_RUN:-}" ]; then
+    echo "+ append $1"
+    sed 's/^/    /'
+  else
+    cat >>"$1"
+  fi
+}
+
+local_config=$HOME/.gitconfig-local
 includes=
-seen=
-old_ifs=$IFS
-IFS=,
-for entry in $GIT_PROFILES; do
-  IFS=$old_ifs
-  entry=$(printf '%s' "$entry" | sed 's/^ *//; s/ *$//')
-  [ -n "$entry" ] || continue
-  dir=${entry%%=*}
-  email=${entry#*=}
-  [ "$dir" != "$entry" ] || die "profile '$entry' is not dir=email"
-  name=$(basename "$dir" | tr '[:upper:]' '[:lower:]')
-  case " $seen " in *" $name "*) die "two profiles would share ~/.gitconfig-$name; rename one directory" ;; esac
-  seen="${seen:-} $name"
-  includes="$includes
-[includeIf \"gitdir/i:$dir/\"]
+write_profile() {
+  printf '[user]\n\temail = %s\n\tsigningkey = %s.pub\n' "$email" "$profile_key" | write "$HOME/.gitconfig-$name"
+  include="[includeIf \"gitdir/i:$dir/\"]
 	path = ~/.gitconfig-$name"
-  printf '[user]\n\temail = %s\n' "$email" | write "$HOME/.gitconfig-$name"
-done
-IFS=$old_ifs
+  # An existing Mac gets the profiles it lacks; a fresh one gets them all at once below.
+  if [ ! -f "$local_config" ]; then
+    includes="$includes
+$include"
+  elif ! grep -qxF "[includeIf \"gitdir/i:$dir/\"]" "$local_config"; then
+    printf '\n%s\n' "$include" | append "$local_config"
+  fi
+}
+each_profile write_profile
 
 printf '[user]\n\tname = %s\n\temail = %s\n\tsigningkey = %s.pub\n[commit]\n\tgpgsign = true\n%s\n' \
-  "$GIT_NAME" "$GIT_EMAIL" "$key" "$includes" | write "$HOME/.gitconfig-local"
+  "$GIT_NAME" "$GIT_EMAIL" "$default_key" "$includes" | write "$local_config"
+
+# [user] is the owner's, so the work Mac still signing with another key gets a
+# note and no edit. git signs with the key whether the path is spelled with ~
+# or $HOME and names the private or the public half.
+if [ "$machine_env" = work ] && [ -f "$local_config" ]; then
+  signs=$(git config --file "$local_config" --get user.signingkey || true)
+  resolved=$signs
+  # shellcheck disable=SC2088  # matching the literal ~ a hand edit writes
+  case "$resolved" in "~/"*) resolved=$HOME/${resolved#"~/"} ;; esac
+  if [ "${resolved%.pub}" != "$gitlab_key" ]; then
+    echo "setup-git: ~/.gitconfig-local signs with ${signs:-no key}; the work Mac signs with ~/.ssh/id_ed25519_gitlab.pub. Edit [user] by hand."
+  fi
+fi
 
 run gh config set git_protocol ssh
 

@@ -476,13 +476,219 @@ $upd_open"
 upd_quiet "with a failed reopen"
 ok "update:apps quits and reopens LibreWolf"
 
-out=$(HOME=$tmp_home GIT_NAME=Test GIT_EMAIL=test@example.com GIT_PROFILES='~/Work=work@example.com' \
-  DOTFILES=$root sh bin/setup-git --dry-run) || fail "setup-git --dry-run"
-echo "$out" | grep -q -- '--type authentication' || fail "setup-git: authentication key registration missing"
-echo "$out" | grep -q -- '--type signing' || fail "setup-git: signing key registration missing"
-echo "$out" | grep -q 'write .*/.gitconfig-local' || fail "setup-git: local gitconfig write missing"
-echo "$out" | grep -q 'write .*/.gitconfig-work' || fail "setup-git: profile file write missing"
-ok "setup-git --dry-run"
+# setup-git, run for real in a temp HOME. The forge CLIs, ssh-keygen and
+# ssh-add are stubs that log their arguments, so nothing reaches GitHub or the
+# keychain. gh keeps what it was given in the case's state directory and
+# answers from it, so a rerun sees what the first run did. DOTFILES names a
+# directory with no clone, so no remote is flipped.
+# The git section probes these homes, so the path is physical for the reason
+# it gives there.
+sg=$(cd "$tmp_home" && pwd -P)/setup-git
+mkdir -p "$sg/stubs"
+cat >"$sg/stubs/gh" <<'EOF'
+#!/bin/sh
+echo "gh $*" >>"$SG_LOG"
+case "$1 $2" in
+  "auth status") [ -f "$SG_STATE/gh-login" ] ;;
+  "auth login") : >"$SG_STATE/gh-login" ;;
+  "ssh-key list") cat "$SG_STATE/gh-keys" 2>/dev/null || true ;;
+  "ssh-key add") printf '%s %s\n' "$(cut -d' ' -f2 "$3")" "$5" >>"$SG_STATE/gh-keys" ;;
+  "api meta") echo 'ssh-ed25519 AAAAstubhostkey' ;;
+esac
+EOF
+# Nothing in setup-git calls glab yet, and a call that lands fails the log check.
+printf '#!/bin/sh\necho "glab $*" >>"$SG_LOG"\nexit 1\n' >"$sg/stubs/glab"
+# No mkdir: the real ssh-keygen fails when the key's directory is missing.
+cat >"$sg/stubs/ssh-keygen" <<'EOF'
+#!/bin/sh
+echo "ssh-keygen $*" >>"$SG_LOG"
+while [ $# -gt 1 ]; do [ "$1" = -f ] && f=$2; shift; done
+echo stub >"$f"
+echo "ssh-ed25519 AAAAstub-$(basename "$f") stub" >"$f.pub"
+EOF
+printf '#!/bin/sh\necho "ssh-add $*" >>"$SG_LOG"\n' >"$sg/stubs/ssh-add"
+chmod +x "$sg"/stubs/*
+
+sg_case() { # $1: case name, $2: the env miserc names, or nothing for no miserc
+  rm -rf "${sg:?}/$1"
+  mkdir -p "$sg/$1/home" "$sg/$1/state"
+  if [ -n "$2" ]; then
+    mkdir -p "$sg/$1/home/.config/mise"
+    printf 'env = ["%s"]\n' "$2" >"$sg/$1/home/.config/mise/miserc.toml"
+  fi
+}
+sg_run() { # $1: case name, then NAME=value pairs and setup-git's arguments
+  c=$sg/$1
+  shift
+  : >"$c/log"
+  # env -i keeps the caller's DRY_RUN, GIT_* and XDG_* out of the run.
+  (cd "$c" && env -i PATH="$sg/stubs:/usr/bin:/bin" HOME="$c/home" SG_LOG="$c/log" SG_STATE="$c/state" \
+    DOTFILES="$c/no-clone" GIT_NAME='Test Person' "$@" </dev/null >"$c/out" 2>&1)
+}
+sg_snap() { # Every file in the case's HOME with its checksum.
+  (cd "$sg/$1/home" && find . \( -type f -o -type l \) -exec cksum {} + | sort)
+}
+sg_file_is() { # $1: case, $2: file under HOME, $3: its expected content
+  [ "$(cat "$sg/$1/home/$2" 2>/dev/null)" = "$3" ] \
+    || fail "setup-git $1: ~/$2 is:
+$(cat "$sg/$1/home/$2" 2>&1)"
+}
+sg_log_is() { # $1: case, $2: the log it must have written
+  [ "$(cat "$sg/$1/log")" = "$2" ] || fail "setup-git $1 logged:
+$(cat "$sg/$1/log")"
+}
+# A rerun with the same input changes no file and sends only the reads.
+sg_rerun_quiet() { # $1: case, then sg_run's arguments
+  before=$(sg_snap "$1")
+  sg_run "$@" sh "$root/bin/setup-git" || fail "setup-git $1 rerun exited nonzero: $(cat "$sg/$1/out")"
+  [ "$(sg_snap "$1")" = "$before" ] || fail "setup-git $1 rerun changed files"
+  sg_log_is "$1" "gh auth status
+gh ssh-key list
+gh ssh-key list
+gh config set git_protocol ssh"
+}
+sg_host=$(hostname)
+sg_note='the work Mac signs with ~/.ssh/id_ed25519_gitlab.pub. Edit [user] by hand.'
+
+# A personal Mac, fresh: the GitHub key everywhere and no GitLab anything.
+sg_case personal-fresh personal
+h=$sg/personal-fresh/home
+set -- personal-fresh GIT_EMAIL=personal@example.com GIT_PROFILES='~/Work=work@example.com'
+before=$(sg_snap personal-fresh)
+sg_run "$@" sh "$root/bin/setup-git" --dry-run || fail "setup-git personal-fresh --dry-run exited nonzero: $(cat "$sg/personal-fresh/out")"
+[ "$(sg_snap personal-fresh)" = "$before" ] || fail "setup-git personal-fresh --dry-run changed files"
+sg_log_is personal-fresh "gh auth status"
+grep -qxF "+ write $h/.gitconfig-local" "$sg/personal-fresh/out" \
+  || fail "setup-git personal-fresh --dry-run did not print the local file: $(cat "$sg/personal-fresh/out")"
+sg_run "$@" sh "$root/bin/setup-git" || fail "setup-git personal-fresh exited nonzero: $(cat "$sg/personal-fresh/out")"
+sg_log_is personal-fresh "gh auth status
+gh auth login -w -p ssh --skip-ssh-key -s admin:public_key,admin:ssh_signing_key
+ssh-keygen -t ed25519 -C personal@example.com -f $h/.ssh/id_ed25519_github
+ssh-add --apple-use-keychain $h/.ssh/id_ed25519_github
+gh ssh-key list
+gh ssh-key add $h/.ssh/id_ed25519_github.pub --type authentication --title $sg_host
+gh ssh-key list
+gh ssh-key add $h/.ssh/id_ed25519_github.pub --type signing --title $sg_host
+gh config set git_protocol ssh
+gh api meta --jq .ssh_keys[]"
+sg_file_is personal-fresh .gitconfig-local "[user]
+	name = Test Person
+	email = personal@example.com
+	signingkey = $h/.ssh/id_ed25519_github.pub
+[commit]
+	gpgsign = true
+
+[includeIf \"gitdir/i:~/Work/\"]
+	path = ~/.gitconfig-work"
+sg_file_is personal-fresh .gitconfig-work "[user]
+	email = work@example.com
+	signingkey = $h/.ssh/id_ed25519_github.pub"
+[ -e "$h/.ssh/id_ed25519_gitlab" ] && fail "setup-git personal-fresh made a GitLab key"
+sg_rerun_quiet "$@"
+grep -qF "$sg_note" "$sg/personal-fresh/out" && fail "setup-git personal-fresh printed the work Mac note"
+ok "setup-git, a fresh personal Mac"
+
+# The work Mac, fresh: the default identity signs with the GitLab key, and each
+# profile with the key it names, GitHub when it names none.
+sg_case work-fresh work
+h=$sg/work-fresh/home
+set -- work-fresh GIT_EMAIL=work@example.com GIT_PROFILES='~/Work=w@example.com=gitlab, ~/Personal=p@example.com'
+sg_run "$@" sh "$root/bin/setup-git" || fail "setup-git work-fresh exited nonzero: $(cat "$sg/work-fresh/out")"
+grep -q '^glab' "$sg/work-fresh/log" && fail "setup-git work-fresh called glab"
+sg_file_is work-fresh .gitconfig-local "[user]
+	name = Test Person
+	email = work@example.com
+	signingkey = $h/.ssh/id_ed25519_gitlab.pub
+[commit]
+	gpgsign = true
+
+[includeIf \"gitdir/i:~/Work/\"]
+	path = ~/.gitconfig-work
+[includeIf \"gitdir/i:~/Personal/\"]
+	path = ~/.gitconfig-personal"
+sg_file_is work-fresh .gitconfig-work "[user]
+	email = w@example.com
+	signingkey = $h/.ssh/id_ed25519_gitlab.pub"
+sg_file_is work-fresh .gitconfig-personal "[user]
+	email = p@example.com
+	signingkey = $h/.ssh/id_ed25519_github.pub"
+grep -qF "$sg_note" "$sg/work-fresh/out" && fail "setup-git work-fresh printed the note over the file it just wrote"
+sg_rerun_quiet "$@"
+grep -qF "$sg_note" "$sg/work-fresh/out" && fail "setup-git work-fresh printed the note on a rerun"
+ok "setup-git, the work Mac fresh, with profiles"
+
+# Refusals stop before any login, key or file. The first entry in the second
+# case is valid, so a check that ran entry by entry would write its file.
+for refusal in \
+  ':~/W=w@example.com=gitlab' \
+  'personal:~/W=w@example.com=gitlab' \
+  'work:~/Ok=o@example.com,~/W=w@example.com=bitbucket' \
+  'work:~/W=w@example.com=github=x' \
+  'work:~/W='
+do
+  sg_case refusal "${refusal%%:*}"
+  profiles=${refusal#*:}
+  before=$(sg_snap refusal)
+  sg_run refusal GIT_EMAIL=e@example.com GIT_PROFILES="$profiles" sh "$root/bin/setup-git" \
+    && fail "setup-git accepted '$profiles'"
+  bad=${profiles##*,}
+  grep -qF "profile '$bad'" "$sg/refusal/out" || fail "setup-git refused '$profiles' without naming '$bad': $(cat "$sg/refusal/out")"
+  [ "$(sg_snap refusal)" = "$before" ] || fail "setup-git wrote files before refusing '$profiles'"
+  sg_log_is refusal ""
+done
+ok "setup-git refusals"
+
+# The work Mac already set up, as this repo's own Mac was: a personal [user], no
+# includes, and a profile file written by hand. setup-git appends the missing
+# includes, writes the missing profile file, keeps the rest byte for byte and
+# leaves [user] to the note.
+sg_case existing work
+h=$sg/existing/home
+sg_local="[user]
+	name = Test Person
+	email = personal@example.com
+	signingkey = ~/.ssh/id_ed25519_github.pub
+[commit]
+	gpgsign = true"
+printf '%s\n' "$sg_local" >"$h/.gitconfig-local"
+printf '[user]\n\temail = old@example.com\n' >"$h/.gitconfig-work"
+set -- existing GIT_EMAIL=work@example.com GIT_PROFILES='~/Projects/iamstuba=personal@example.com=github,~/Work=w@example.com=gitlab'
+before=$(sg_snap existing)
+sg_run "$@" sh "$root/bin/setup-git" --dry-run || fail "setup-git existing --dry-run exited nonzero: $(cat "$sg/existing/out")"
+[ "$(sg_snap existing)" = "$before" ] || fail "setup-git existing --dry-run changed files"
+sg_log_is existing "gh auth status"
+for want in "+ append $h/.gitconfig-local" '    [includeIf "gitdir/i:~/Projects/iamstuba/"]' "+ write $h/.gitconfig-iamstuba"; do
+  grep -qxF -- "$want" "$sg/existing/out" || fail "setup-git existing --dry-run did not print '$want': $(cat "$sg/existing/out")"
+done
+sg_run "$@" sh "$root/bin/setup-git" || fail "setup-git existing exited nonzero: $(cat "$sg/existing/out")"
+sg_file_is existing .gitconfig-local "$sg_local
+
+[includeIf \"gitdir/i:~/Projects/iamstuba/\"]
+	path = ~/.gitconfig-iamstuba
+
+[includeIf \"gitdir/i:~/Work/\"]
+	path = ~/.gitconfig-work"
+sg_file_is existing .gitconfig-iamstuba "[user]
+	email = personal@example.com
+	signingkey = $h/.ssh/id_ed25519_github.pub"
+sg_file_is existing .gitconfig-work "[user]
+	email = old@example.com"
+grep -qxF "setup-git: ~/.gitconfig-local signs with ~/.ssh/id_ed25519_github.pub; $sg_note" "$sg/existing/out" \
+  || fail "setup-git existing printed no note: $(cat "$sg/existing/out")"
+sg_rerun_quiet "$@"
+grep -qF "$sg_note" "$sg/existing/out" || fail "setup-git existing dropped the note on a rerun"
+# The owner's hand edit, after which the note stops.
+sed 's|id_ed25519_github.pub$|id_ed25519_gitlab.pub|; s|personal@example.com$|work@example.com|' \
+  "$h/.gitconfig-local" >"$sg/existing/edited" && mv "$sg/existing/edited" "$h/.gitconfig-local"
+sg_rerun_quiet "$@"
+grep -qF "$sg_note" "$sg/existing/out" && fail "setup-git existing printed the note after the hand edit"
+# git signs with the private half too, so naming it is no reason for the note.
+sed "s|~/.ssh/id_ed25519_gitlab.pub\$|$h/.ssh/id_ed25519_gitlab|" \
+  "$h/.gitconfig-local" >"$sg/existing/edited" && mv "$sg/existing/edited" "$h/.gitconfig-local"
+grep -qxF "	signingkey = $h/.ssh/id_ed25519_gitlab" "$h/.gitconfig-local" || fail "setup-git existing: the second hand edit missed"
+sg_rerun_quiet "$@"
+grep -qF "$sg_note" "$sg/existing/out" && fail "setup-git existing printed the note for the private key path"
+ok "setup-git, the work Mac already set up"
 
 out=$(HOME=$tmp_home DOTFILES=$root DOTFILES_WORK=0 GIT_NAME=Test GIT_EMAIL=test@example.com GIT_PROFILES= \
   sh install.sh --dry-run) || fail "install.sh --dry-run"
@@ -741,40 +947,33 @@ fi
 # file through the symlink, whether the include fires and whether the profile
 # pattern matches are the three things that actually break.
 if command -v git >/dev/null 2>&1; then
-  # Physical, because mktemp hands back /var/... and git matches a profile's
-  # gitdir pattern against the resolved /private/var path, so a logical ~ misses.
-  git_home=$(cd "$(mktemp -d)" && pwd -P)
-  mkdir -p "$git_home/.config" "$git_home/Work/repo" "$git_home/Personal/repo"
-  # A directory symlink, exactly as the [dotfiles] row spells it.
-  ln -s "$root/config/git" "$git_home/.config/git"
-
-  # Byte for byte what setup-git writes for GIT_PROFILES='~/Work=work@example.com'.
-  # A fixture that drifts from it proves nothing about the real machine.
-  cat >"$git_home/.gitconfig-local" <<LOCAL
-[user]
-	name = Test Person
-	email = personal@example.com
-	signingkey = $git_home/.ssh/id_ed25519_github.pub
-[commit]
-	gpgsign = true
-
-[includeIf "gitdir/i:~/Work/"]
-	path = ~/.gitconfig-work
-LOCAL
-  printf '[user]\n\temail = work@example.com\n' >"$git_home/.gitconfig-work"
+  # The homes the setup-git runs above wrote, so git resolves the identity
+  # setup-git actually produces. git matches a profile's gitdir pattern against
+  # the resolved /private/var path. mktemp hands back /var/..., so both homes
+  # are physical paths, or a logical ~ would miss.
+  git_home=$sg/personal-fresh/home
+  git_work_home=$sg/work-fresh/home
+  for h in "$git_home" "$git_work_home"; do
+    mkdir -p "$h/.config" "$h/Work/repo" "$h/Personal/repo" "$h/Other/repo"
+    # A directory symlink, exactly as the [dotfiles] row spells it.
+    ln -s "$root/config/git" "$h/.config/git"
+  done
 
   # GIT_CONFIG_NOSYSTEM keeps Apple's system gitconfig out of every answer.
   # XDG_CONFIG_HOME is unset for the reason the bat block unsets it: .zshenv
   # exports it into whoever runs `mise run check`, and leaving it set points
   # git at the caller's real ~/.config/git instead of this temp one.
-  git_probe() {
+  git_at() { # $1: the HOME to run in, then git's arguments
     # cd out of the repo first. The smoke test runs from $root, and a git that
     # starts there reads this repo's .git/config too, so one `git config --local
     # user.name` here would answer for the tracked file and pass.
-    (unset XDG_CONFIG_HOME
-     cd "$git_home"
-     HOME=$git_home GIT_CONFIG_NOSYSTEM=1 git "$@")
+    (home=$1
+     shift
+     unset XDG_CONFIG_HOME
+     cd "$home"
+     HOME=$home GIT_CONFIG_NOSYSTEM=1 git "$@")
   }
+  git_probe() { git_at "$git_home" "$@"; }
 
   resolved=$(git_probe config --list) || fail "git: config --list failed under the temp HOME"
   for kv in \
@@ -839,14 +1038,22 @@ LOCAL
 
   # Profiles, inside real repositories. Nothing else exercises the trailing
   # slash in `gitdir/i:~/Work/`, which is what makes it match subdirectories.
-  git_probe -C "$git_home/Work/repo" init -q || fail "git: init failed in the temp work tree"
-  git_probe -C "$git_home/Personal/repo" init -q || fail "git: init failed in the temp personal tree"
-  email=$(git_probe -C "$git_home/Work/repo" config --get user.email || true)
-  [ "$email" = "work@example.com" ] \
-    || fail "git: the work profile did not match inside ~/Work (got ${email:-nothing})"
-  email=$(git_probe -C "$git_home/Personal/repo" config --get user.email || true)
-  [ "$email" = "personal@example.com" ] \
-    || fail "git: the personal identity did not survive outside ~/Work (got ${email:-nothing})"
+  # --show-origin puts a tab between the file and the value.
+  tab=$(printf '\t')
+  identity_is() { # $1: home, $2: repo under it, $3: email, $4: signing key name, $5: the file that wins
+    git_at "$1" -C "$1/$2" init -q || fail "git: init failed in ~/$2"
+    got=$(git_at "$1" -C "$1/$2" config --show-origin --get user.email || true)
+    [ "$got" = "file:$1/$5$tab$3" ] \
+      || fail "git: ~/$2 under $1 resolves user.email to ${got:-nothing}, not $3 from ~/$5"
+    got=$(git_at "$1" -C "$1/$2" config --show-origin --get user.signingkey || true)
+    [ "$got" = "file:$1/$5$tab$1/.ssh/$4.pub" ] \
+      || fail "git: ~/$2 under $1 resolves user.signingkey to ${got:-nothing}, not ~/.ssh/$4.pub from ~/$5"
+  }
+  identity_is "$git_home" Work/repo work@example.com id_ed25519_github .gitconfig-work
+  identity_is "$git_home" Personal/repo personal@example.com id_ed25519_github .gitconfig-local
+  identity_is "$git_work_home" Work/repo w@example.com id_ed25519_gitlab .gitconfig-work
+  identity_is "$git_work_home" Personal/repo p@example.com id_ed25519_github .gitconfig-personal
+  identity_is "$git_work_home" Other/repo work@example.com id_ed25519_gitlab .gitconfig-local
 
   # The row is a directory symlink for one reason: it carries config/git/ignore
   # to ~/.config/git/ignore, and no other probe here would notice its absence.
@@ -874,8 +1081,8 @@ LOCAL
      HOME=$git_home bat cache --build >/dev/null 2>&1) \
       || fail "delta: bat cache --build failed under the temp HOME"
 
-    # Two commits, so there is a real diff to render. The fixture local file
-    # turns gpgsign on and names a key that does not exist, so it is off here.
+    # Two commits, so there is a real diff to render. setup-git's local file
+    # turns gpgsign on and names a stub key, so it is off here.
     delta_repo=$git_home/Personal/repo
     printf 'one\ntwo\n' >"$delta_repo/f.txt"
     git_probe -C "$delta_repo" add f.txt || fail "delta: staging the first revision failed"
@@ -924,7 +1131,6 @@ LOCAL
   [ "$branch" = trunk ] \
     || fail "git: ~/.gitconfig-local loses to the tracked config; the include is not last"
 
-  rm -rf "$git_home"
   # A warning, not a failure: a machine mid-migration is a legal state, and the
   # fresh Mac this repo targets has no ~/.gitconfig at all.
   if [ -e "$HOME/.gitconfig" ]; then

@@ -76,7 +76,7 @@ ask GIT_EMAIL "Git email"
 if [ -z "${GIT_PROFILES+set}" ]; then
   GIT_PROFILES=
   if [ -t 0 ]; then
-    printf 'Git profiles as dir=email, comma separated, or empty: '
+    printf 'Git profiles as dir=email[=github|gitlab], comma separated, or empty: '
     read -r GIT_PROFILES
   fi
 fi
