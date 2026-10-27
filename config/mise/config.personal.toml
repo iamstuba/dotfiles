@@ -1,0 +1,30 @@
+# Personal overlay of the global half, symlinked beside config.toml by
+# mise.personal.toml and read only when MISE_ENV includes "personal". It holds
+# pi, which a work Mac does not get.
+
+[settings]
+minimum_release_age_excludes = ["pi"]  # appends to config.toml's list
+
+[tools]
+pi = "latest"      # must stay on aqua:, never npm:
+
+[tasks."setup-agents:pi"]
+description = "Install herdr's pi integration and pi's skills package."
+# herdr refuses a symlinked directory, so ~/.pi stays real.
+run = """
+  mkdir -p ~/.pi/agent
+  herdr integration install pi
+  pi install git:github.com/mattpocock/skills@v1.2.3
+"""
+
+[tasks."update:pi"]
+description = "Update pi's extensions."
+run = "pi update --extensions"
+
+# No run or description here: either would replace config.toml's task instead
+# of adding to it.
+[tasks.setup-agents]
+depends_post = ["setup-agents:pi"]
+
+[tasks."update:tools"]
+depends_post = ["update:pi"]

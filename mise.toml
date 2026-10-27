@@ -53,8 +53,7 @@ adopt = true
 [dotfiles]
 "~/.editorconfig" = "home/.editorconfig"
 "~/.ssh/config" = "config/ssh/config"
-"~/.config/mise/config.toml" = "config/mise/config.toml"            # file-level: miserc.toml lives beside it
-"~/.config/mise/config.work.toml" = "config/mise/config.work.toml"  # inert unless MISE_ENV names work
+"~/.config/mise/config.toml" = "config/mise/config.toml"  # file-level: miserc.toml lives beside it
 
 # shell. ~/.zshenv is what finds the clone; everything else hangs off the
 # XDG_CONFIG_HOME it exports. config/zsh is a directory symlink, so HISTFILE
@@ -76,15 +75,12 @@ adopt = true
 
 "~/.config/lazygit/config.yml" = "config/lazygit/config.yml"  # file-level: state.yml lives beside it
 
-# agents. One shared instruction file, linked into both agents so the rules
-# cannot disagree between them. file-level like lazygit above, because both
-# herdr integrations refuse a symlinked directory and setup-agents runs them.
+# agents. One shared instruction file, which mise.personal.toml also links
+# into pi so the rules cannot disagree between them. file-level like lazygit
+# above, because herdr's integration refuses a symlinked directory and
+# setup-agents runs it. ~/.claude/settings.json is in mise.personal.toml,
+# because the work Mac keeps its own.
 "~/.claude/CLAUDE.md" = "home/.agents/AGENTS.md"
-"~/.pi/agent/AGENTS.md" = "home/.agents/AGENTS.md"
-# ~/.claude/settings.json is in mise.personal.toml: the work Mac keeps its own.
-"~/.pi/agent/settings.json" = "home/.pi/agent/settings.json"
-"~/.pi/agent/themes/tokyonight_night.json" = "home/.pi/agent/themes/tokyonight_night.json"
-"~/.pi/agent/extensions/herdr-blocked-bridge.ts" = "home/.pi/agent/extensions/herdr-blocked-bridge.ts"
 
 # herdr. file-level: its config directory also holds the socket, the logs,
 # session.json and the installed plugins.

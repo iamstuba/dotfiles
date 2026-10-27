@@ -8,6 +8,18 @@
 # file, and a symlink would send those writes into the tracked one.
 "~/.claude/settings.json" = "home/.claude/settings.json"
 
+# The global half of this overlay: pi's tool, its release-age exclude and its
+# tasks.
+"~/.config/mise/config.personal.toml" = "config/mise/config.personal.toml"
+
+# pi. file-level, because herdr's integration refuses a symlinked directory.
+# AGENTS.md is the shared instruction file, which mise.toml links into Claude
+# Code.
+"~/.pi/agent/AGENTS.md" = "home/.agents/AGENTS.md"
+"~/.pi/agent/settings.json" = "home/.pi/agent/settings.json"
+"~/.pi/agent/themes/tokyonight_night.json" = "home/.pi/agent/themes/tokyonight_night.json"
+"~/.pi/agent/extensions/herdr-blocked-bridge.ts" = "home/.pi/agent/extensions/herdr-blocked-bridge.ts"
+
 # Runs after mise.toml's post-defaults hook: hooks from every loaded file run.
 [bootstrap.hooks.post-defaults]
 run = "{{ config_root }}/bin/remove-bundled-apps"  # absolute: a bare path would follow the caller's cwd

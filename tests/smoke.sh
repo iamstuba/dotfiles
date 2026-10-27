@@ -47,6 +47,7 @@ command -v yq >/dev/null 2>&1 \
 root_json=$(yq -p toml -o json mise.toml) || fail "mise.toml does not parse"
 global_json=$(yq -p toml -o json config/mise/config.toml) || fail "config/mise/config.toml does not parse"
 work_json=$(yq -p toml -o json config/mise/config.work.toml) || fail "config/mise/config.work.toml does not parse"
+global_personal_json=$(yq -p toml -o json config/mise/config.personal.toml) || fail "config/mise/config.personal.toml does not parse"
 root_work_json=$(yq -p toml -o json mise.work.toml) || fail "mise.work.toml does not parse"
 personal_json=$(yq -p toml -o json mise.personal.toml) || fail "mise.personal.toml does not parse"
 
@@ -66,15 +67,17 @@ if [ -f config/tuicr/config.toml ]; then
 fi
 
 ROOT_JSON=$root_json ROOT_WORK_JSON=$root_work_json PERSONAL_JSON=$personal_json GLOBAL_JSON=$global_json WORK_JSON=$work_json \
+GLOBAL_PERSONAL_JSON=$global_personal_json \
 STARSHIP_JSON=$starship_json YAZI_JSON=$yazi_json TUICR_JSON=$tuicr_json \
 python3 - <<'PY' || fail "manifest shape"
-import sys, os, json, pathlib
+import sys, os, json, pathlib, re
 
 root = json.loads(os.environ["ROOT_JSON"])
 global_cfg = json.loads(os.environ["GLOBAL_JSON"])
 work = json.loads(os.environ["WORK_JSON"]) or {}  # yq reads an empty file as null
 root_work = json.loads(os.environ["ROOT_WORK_JSON"])
 personal = json.loads(os.environ["PERSONAL_JSON"])
+global_personal = json.loads(os.environ["GLOBAL_PERSONAL_JSON"])
 errs = []
 
 if "dotfiles" in global_cfg or "bootstrap" in global_cfg:
@@ -85,8 +88,15 @@ if "tools" in root:
     errs.append("repo-root file carries tools; they are only on PATH inside the clone")
 if set(work) - {"tools", "bootstrap"}:
     errs.append(f"overlay carries unexpected tables: {sorted(set(work) - {'tools', 'bootstrap'})}")
-if set(root_work) - {"bootstrap"}:
-    errs.append(f"repo-root overlay carries more than packages: {sorted(set(root_work) - {'bootstrap'})}")
+if set(root_work) - {"bootstrap", "dotfiles"}:
+    errs.append(f"repo-root overlay carries more than packages and its link: {sorted(set(root_work) - {'bootstrap', 'dotfiles'})}")
+# Its one row links the global overlay. Any other row belongs in mise.toml or
+# mise.personal.toml, and without this one the work overlay stops loading.
+if set(root_work.get("dotfiles", {})) != {"~/.config/mise/config.work.toml"}:
+    errs.append(f"mise.work.toml's dotfiles are {sorted(root_work.get('dotfiles', {}))}, not just config.work.toml, so the work overlay stops loading or carries another Mac's link")
+for target in root_work.get("dotfiles", {}):
+    if target in root.get("dotfiles", {}):
+        errs.append(f"{target} is in both mise.toml and mise.work.toml, so personal gets it too")
 if set(root_work.get("bootstrap", {})) - {"packages"}:
     errs.append("repo-root overlay's bootstrap carries more than packages")
 # An entry there outranks mise.toml, so it may only turn a declared package off.
@@ -108,8 +118,49 @@ if "remove-bundled-apps" in json.dumps(root.get("bootstrap", {}).get("hooks", {}
 for target in personal.get("dotfiles", {}):
     if target in root.get("dotfiles", {}):
         errs.append(f"{target} is in both mise.toml and mise.personal.toml, so work gets it too")
+if "~/.config/mise/config.personal.toml" not in personal.get("dotfiles", {}):
+    errs.append("mise.personal.toml no longer links config.personal.toml, so a personal Mac loses pi")
 
-for target, src in {**root.get("dotfiles", {}), **personal.get("dotfiles", {})}.items():
+# pi is personal-only. Anything of pi's in either half of the manifest reaches
+# the work Mac, because mise cannot switch off what a loaded file declares.
+def strings(x):
+    if isinstance(x, str):
+        yield x
+    elif isinstance(x, dict):
+        for v in x.values():
+            yield from strings(v)
+    elif isinstance(x, list):
+        for v in x:
+            yield from strings(v)
+
+pi_cmd = re.compile(r"(?:^|[\s;&|(`])pi(?:\s|$)|~/\.pi\b")
+for name, cfg in (("config/mise/config.toml", global_cfg), ("mise.toml", root)):
+    for key in cfg.get("tools", {}):
+        if re.split(r"[:/]", key)[-1] in ("pi", "pi-coding-agent"):
+            errs.append(f"{name} declares {key}; pi is in config.personal.toml")
+    if "pi" in cfg.get("settings", {}).get("minimum_release_age_excludes", []):
+        errs.append(f"{name} excludes pi from the release age; config.personal.toml does")
+    for target in cfg.get("dotfiles", {}):
+        if target == "~/.pi" or target.startswith("~/.pi/"):
+            errs.append(f"{name} links {target}; pi's links are in mise.personal.toml")
+    for text in strings([cfg.get("tasks", {}), cfg.get("bootstrap", {}).get("hooks", {})]):
+        for line in text.splitlines():
+            if pi_cmd.search(line):
+                errs.append(f"{name} runs pi: {line.strip()!r}")
+
+# The global personal overlay holds pi's tool, its exclude and its tasks. A
+# block named after a config.toml task may carry depends_post and nothing
+# else: run or description there replaces the task instead of adding to it.
+if set(global_personal) - {"tools", "settings", "tasks"}:
+    errs.append(f"config.personal.toml carries unexpected tables: {sorted(set(global_personal) - {'tools', 'settings', 'tasks'})}")
+for name, task in global_personal.get("tasks", {}).items():
+    if name in global_cfg.get("tasks", {}) and set(task) != {"depends_post"}:
+        errs.append(f"config.personal.toml's {name} carries {sorted(task)}, not only depends_post")
+    for dep in task.get("depends_post", []):
+        if dep not in global_personal.get("tasks", {}):
+            errs.append(f"config.personal.toml's {name} runs {dep} after it, which the file never defines")
+
+for target, src in {**root.get("dotfiles", {}), **personal.get("dotfiles", {}), **root_work.get("dotfiles", {})}.items():
     source = src if isinstance(src, str) else src.get("source", "")
     if any(c in target + source for c in "*?["):
         errs.append(f"wildcard in dotfiles entry {target}")
@@ -247,7 +298,8 @@ echo "$out" | grep -q 'env = \["personal"\]' && fail "install: wrote the persona
 # The zsh probe below grants the same trust to its own temp HOME, so without
 # this the probe would stay green while a bootstrapped Mac went back to mise
 # warning on every shell start. Only the work answer reaches this far.
-for f in mise.toml mise.work.toml mise.personal.toml config/mise/config.toml config/mise/config.work.toml; do
+for f in mise.toml mise.work.toml mise.personal.toml config/mise/config.toml config/mise/config.work.toml \
+         config/mise/config.personal.toml; do
   echo "$out" | grep -q "mise trust $root/$f" || fail "install: no mise trust for $f"
 done
 sh install.sh --bogus >/dev/null 2>&1 && fail "install: unknown argument accepted"
@@ -880,10 +932,10 @@ probe_yaml "pi settings" home/.pi/agent/settings.json '{
   "packages.0.themes": []
 }'
 
-# The same pinned source, twice: `setup-agents` installs it and these settings
-# declare it. Bumping one and not the other leaves pi loading skills it was not
-# told about, which is the thing the pin exists to prevent.
-SRC=$(printf '%s' "$global_json" | yq -r '.tasks."setup-agents".run') \
+# The same pinned source, twice: `setup-agents:pi` installs it and these
+# settings declare it. Bumping one and not the other leaves pi loading skills it
+# was not told about, which is the thing the pin exists to prevent.
+SRC=$(printf '%s' "$global_personal_json" | yq -r '.tasks."setup-agents:pi".run') \
 WANT=$(yq -p yaml -o json home/.pi/agent/settings.json | yq -r '.packages[0].source') \
 python3 - <<'PISRC' || fail "pi skills pin"
 import sys, os, re
@@ -892,7 +944,7 @@ run = os.environ["SRC"]
 want = os.environ["WANT"]
 installed = re.findall(r"^\s*pi install (\S+)", run, flags=re.M)
 if installed != [want]:
-    print(f"  setup-agents runs `pi install` on {installed}, but pi's settings "
+    print(f"  setup-agents:pi runs `pi install` on {installed}, but pi's settings "
           f"pin {want!r}", file=sys.stderr)
     sys.exit(1)
 PISRC
@@ -1034,7 +1086,10 @@ fi
 # herdr-managed and untracked, so the only honest source for the channel name
 # is what `herdr integration install pi` writes. Into $tmp_home, which the trap
 # above already cleans up, and it refuses a HOME with no extensions directory.
-if command -v herdr >/dev/null 2>&1; then
+# A Mac without pi never runs that install, so it has nothing to check.
+if ! command -v pi >/dev/null 2>&1; then
+  printf 'skip herdr blocked listener: pi is not on PATH\n'
+elif command -v herdr >/dev/null 2>&1; then
   herdr_pi=$tmp_home/herdr-pi
   mkdir -p "$herdr_pi/.pi/agent/extensions"
   if HOME=$herdr_pi herdr integration install pi >/dev/null 2>&1; then
@@ -1717,8 +1772,10 @@ tools_cmds() {
 # the machine it was written on.
 tools_keys=$(tools_in config/mise/config.toml) || fail "tools: config/mise/config.toml"
 work_keys=$(tools_in config/mise/config.work.toml optional) || fail "tools: config/mise/config.work.toml"
-all_keys=$tools_keys${work_keys:+
+personal_keys=$(tools_in config/mise/config.personal.toml) || fail "tools: config/mise/config.personal.toml"
+all_keys="$tools_keys${work_keys:+
 $work_keys}
+$personal_keys"
 
 drift=
 for key in $all_keys; do
@@ -1738,17 +1795,23 @@ ok "tools inventory ($(printf '%s\n' "$all_keys" | wc -l | tr -d ' ') tools)"
 # Resolution. Skipped whole when mise is absent, because without mise nothing
 # in [tools] can be installed and every assertion below would be noise.
 if command -v mise >/dev/null 2>&1; then
-  # The overlay's tools exist only where the overlay loads. MISE_ENV is the
+  # An overlay's tools exist only where the overlay loads. MISE_ENV is the
   # documented switch, and miserc.toml is what install.sh actually writes;
   # that file sets MISE_ENV for mise itself and is invisible as a variable
   # here, so both are consulted.
-  overlay=no
-  case "${MISE_ENV:-}" in *work*) overlay=yes ;; esac
-  if grep -qs '^env *=.*"work"' "${XDG_CONFIG_HOME:-$HOME/.config}/mise/miserc.toml"; then
-    overlay=yes
-  fi
+  env_loads() {
+    case "${MISE_ENV:-}" in *"$1"*) return 0 ;; esac
+    grep -qs "^env *=.*\"$1\"" "${XDG_CONFIG_HOME:-$HOME/.config}/mise/miserc.toml"
+  }
   check_keys=$tools_keys
-  [ "$overlay" = no ] || check_keys=$all_keys
+  if env_loads work && [ -n "$work_keys" ]; then
+    check_keys="$check_keys
+$work_keys"
+  fi
+  if env_loads personal; then
+    check_keys="$check_keys
+$personal_keys"
+  fi
 
   missing= asserted=0 skipped=0
   for key in $check_keys; do

@@ -58,8 +58,8 @@ mise run update:all
 ```
 
 Runs, in order: `update:dotfiles` (fast-forward this repo when on main), `update:tools`
-(mise, every tool, pi extensions), `update:apps` (formulae and casks), `update:plugins`
-(Neovim). Run `mise upgrade --dry-run`, `mise bootstrap packages upgrade --dry-run`
+(mise, every tool, pi extensions on a personal Mac), `update:apps` (formulae and
+casks), `update:plugins` (Neovim). Run `mise upgrade --dry-run`, `mise bootstrap packages upgrade --dry-run`
 and `bin/brew-tap-packages upgrade --dry-run` first on a new machine. The third
 covers what the second cannot see; see "Rerunning" below.
 
@@ -94,7 +94,8 @@ file does not exist, and `mise run check` warns when it finds one.
 - `mise.toml`: packages, symlink map, macOS defaults, hooks, repo-bound tasks.
 - `config/mise/config.toml`: tools, settings, update tasks. Symlinked to `~/.config/mise/`.
 - `config/mise/config.work.toml`: work-only tools and packages, none today, loaded when `MISE_ENV` includes `work`.
-- `mise.work.toml`: packages turned off at work. `mise.personal.toml`: the dotfiles and the bundled app removal a work Mac must not get. The installer sets `MISE_ENV` to exactly one of `work` and `personal`.
+- `config/mise/config.personal.toml`: pi and its tasks, loaded when `MISE_ENV` includes `personal`.
+- `mise.work.toml`: packages turned off at work. `mise.personal.toml`: the dotfiles, pi's among them, and the bundled app removal a work Mac must not get. Each links its own global overlay. The installer sets `MISE_ENV` to exactly one of `work` and `personal`.
 - `config/`: mirrors `~/.config`. `home/`: top-level dotfiles. `bin/`: scripts on PATH.
 - `install.sh`, `tests/smoke.sh`, `assets/`.
 

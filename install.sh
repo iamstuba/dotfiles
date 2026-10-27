@@ -129,7 +129,7 @@ if [ ! -d "$DOTFILES/.git" ]; then
 fi
 
 # Config with hooks and dotfiles needs trust. --yes because mise marks bootstrap destructive.
-for f in mise.toml mise.work.toml mise.personal.toml config/mise/config.toml config/mise/config.work.toml; do
+for f in mise.toml mise.work.toml mise.personal.toml config/mise/config.toml config/mise/config.work.toml config/mise/config.personal.toml; do
   run "$mise" trust "$DOTFILES/$f"
 done
 run "$mise" -C "$DOTFILES" bootstrap --yes
