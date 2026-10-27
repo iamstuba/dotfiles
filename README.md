@@ -102,7 +102,7 @@ On a Mac set up by hand, move `~/.gitconfig` aside first. Git reads
 `~/.config/git/config`, where this repo's git config is linked, only while that
 file does not exist, and `mise run check` warns when it finds one.
 
-`mise run check` parses the manifest and runs every script dry.
+`mise run check` parses the manifest and runs every script, dry or, for the installer and setup-git, for real in a temp HOME against stub forge CLIs.
 
 ## Layout
 

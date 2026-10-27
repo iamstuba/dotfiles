@@ -113,7 +113,7 @@ _Avoid_: feature, epic, milestone
 _Avoid_: trial, test run
 
 **Smoke test**:
-`tests/smoke.sh`, what `mise run check` runs. One probe for each thing it covers: the manifest, every tracked config, and every script in dry-run mode. Extended by each area, never split.
+`tests/smoke.sh`, what `mise run check` runs. One probe for each thing it covers: the manifest, every tracked config, and every script. Most scripts run in dry-run mode. The installer and setup-git run for real in a temp HOME, against stubs for the commands that would reach GitHub, GitLab or the keychain. Extended by each area, never split.
 _Avoid_: CI, test suite
 
 **Probe**:

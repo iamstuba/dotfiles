@@ -241,5 +241,5 @@ run = """
 """
 
 [tasks.check]
-description = "Parse the manifest and run every script dry."
+description = "Parse the manifest and run every script, dry or against stubs."
 run = "sh {{ config_root }}/tests/smoke.sh"

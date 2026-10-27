@@ -1,6 +1,7 @@
 #!/bin/sh
-# Smoke test: parses the manifest and runs every script dry. One file,
-# extended by each area, so `mise run check` stays one command.
+# Smoke test: parses the manifest and runs every script, dry or, for the
+# installer and setup-git, for real against stubs. One file, extended by each
+# area, so `mise run check` stays one command.
 set -eu
 
 root=$(cd "$(dirname "$0")/.." && pwd)
