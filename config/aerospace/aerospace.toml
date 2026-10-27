@@ -21,13 +21,16 @@ persistent-workspaces = ['1', '2', '3', '4', '5']
 
 on-focused-monitor-changed = ['move-mouse monitor-lazy-center']
 
-gaps.inner.horizontal = 8
-gaps.inner.vertical = 8
-gaps.outer.left = 8
-gaps.outer.bottom = 8
-gaps.outer.right = 8
-# Room for the bar, which draws in the notch strip.
-gaps.outer.top = 40
+# Borders' round stroke shows only its outer half, 3 of its 6, so the borders
+# fill every gap and nothing shows between them.
+gaps.inner.horizontal = 6
+gaps.inner.vertical = 6
+gaps.outer.left = 3
+gaps.outer.bottom = 3
+gaps.outer.right = 3
+# macOS keeps windows out of the notch strip even with the menu bar hidden,
+# and the bar fills that strip. A display without a notch needs the bar's 38.
+gaps.outer.top = [{ monitor.'built-in' = 3 }, 41]
 
 [mode.main.binding]
 alt-h = 'focus left'
@@ -68,6 +71,8 @@ alt-shift-h = ['join-with left', 'mode main']
 alt-shift-j = ['join-with down', 'mode main']
 alt-shift-k = ['join-with up', 'mode main']
 alt-shift-l = ['join-with right', 'mode main']
+# The bar covers the native menu bar, so this uncovers it.
+b = ['exec-and-forget sketchybar --bar hidden=toggle', 'mode main']
 # Pauses tiling. A paused AeroSpace hears no keys at all, so resume with
 # `aerospace enable on` in a terminal.
 q = 'enable off'

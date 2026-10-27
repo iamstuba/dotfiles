@@ -1952,6 +1952,18 @@ for key in ("default-root-container-layout", "default-root-container-orientation
     if key in cfg:
         errs.append(f"{src}: sets {key}, which the file leaves to AeroSpace's fallback")
 modes = cfg.get("mode", {})
+# A round Borders stroke shows only its outer half, so each gap is exactly
+# that half per window and the borders fill the space with nothing between.
+# macOS keeps windows out of a notched display's top strip even with the menu
+# bar hidden, so only a display without a notch adds the 38-point bar.
+startup = cfg.get("after-startup-command", [])
+width = re.search(r" width=(\d+) ", startup[0] if startup else "")
+half = int(width.group(1)) // 2 if width else None
+want_gaps = {"inner": {"horizontal": 2 * half, "vertical": 2 * half} if half else None,
+             "outer": {"left": half, "right": half, "bottom": half,
+                       "top": [{"monitor": {"built-in": half}}, 38 + half]} if half else None}
+if cfg.get("gaps") != want_gaps:
+    errs.append(f"{src}: gaps are {cfg.get('gaps')!r}, expected {want_gaps!r} for Borders' width")
 if set(modes) != {"main", "service"}:
     errs.append(f"{src}: modes are {sorted(modes)}, expected main and service")
 
@@ -1995,6 +2007,7 @@ want_service = {
     "alt-shift-k": ["join-with up", "mode main"],
     "alt-shift-l": ["join-with right", "mode main"],
     "q": "enable off",
+    "b": ["exec-and-forget sketchybar --bar hidden=toggle", "mode main"],
 }
 if service != want_service:
     for key in sorted(set(service) | set(want_service)):
@@ -2008,12 +2021,16 @@ for key, cmd in service.items():
     joined = " ".join(cmd) if isinstance(cmd, list) else str(cmd)
     if "enable" in joined and "mode" in joined:
         errs.append(f"{src}: service bind {key} runs both enable and mode")
-# The bar subscribes to mode-changed, so this file only starts sketchybar.
-# The colors.sh path and the startup entry are the places the name may appear.
+# The bar subscribes to mode-changed, so this file only starts the bar and
+# toggles it. The colors.sh path, the startup entry and service mode's b are
+# the places the name may appear.
 bar_start = ("exec-and-forget pkill -x sketchybar; for _ in {1..20}; do "
              "pgrep -qx sketchybar || break; sleep 0.1; done; sketchybar")
-if "sketchybar" in text.replace("~/.config/sketchybar/colors.sh", "").replace(bar_start, ""):
-    errs.append(f"{src}: names sketchybar outside the colors.sh path and the startup entry")
+bar_toggle = "exec-and-forget sketchybar --bar hidden=toggle"
+if "sketchybar" in text.replace("~/.config/sketchybar/colors.sh", "").replace(bar_start, "") \
+        .replace(bar_toggle, ""):
+    errs.append(f"{src}: names sketchybar outside the colors.sh path, the startup entry "
+                "and the bar toggle")
 
 # First match wins, so the float rule has to be last, and 0.21.3 refuses a
 # callback with no if.
@@ -2206,8 +2223,11 @@ for line in lines:
 if not flags or flags[-1] != "--update":
     errs.append("the last call is not --update, so the readouts wait for their first poll")
 
-want_bar = {"height": "32", "position": "top", "y_offset": "0", "display": "all",
-            "topmost": "off", "color": os.environ["BAR_COLOR"], "border_width": "0"}
+# The bar covers the native menu bar, which macOS still slides in on a hover.
+want_bar = {"height": "38", "position": "top", "y_offset": "0", "display": "all",
+            "topmost": "on", "color": os.environ["BAR_COLOR"], "border_width": "0"}
+if not os.environ["BAR_COLOR"].startswith("0xff"):
+    errs.append(f"BAR_COLOR is {os.environ['BAR_COLOR']}, not opaque, so the native menu bar shows through")
 if bar != want_bar:
     errs.append(f"bar is {bar}, expected {want_bar}")
 want_defaults = {"icon.font": "Symbols Nerd Font:Regular:14.0", "icon.color": os.environ["FG"],

@@ -6,8 +6,9 @@
 source "$CONFIG_DIR/colors.sh"
 plugins=$CONFIG_DIR/plugins
 
-# AeroSpace's gaps.outer.top of 40 leaves this strip clear of windows.
-sketchybar --bar height=32 position=top y_offset=0 display=all topmost=off \
+# 38 is the notch strip, which macOS keeps clear of windows. On top and
+# opaque, so the native menu bar never shows through on a hover.
+sketchybar --bar height=38 position=top y_offset=0 display=all topmost=on \
   color="$BAR_COLOR" border_width=0
 
 sketchybar --default \
