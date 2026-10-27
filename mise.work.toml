@@ -9,7 +9,7 @@
 [bootstrap.packages]
 # Not wanted on the work Mac. Here rather than in config/mise/config.work.toml
 # because an entry there loses to mise.toml's declaration.
-"brew-cask:zen" = { state = "absent" }
+"brew-cask:librewolf" = { state = "absent" }
 "brew-cask:proton-pass" = { state = "absent" }
 "brew-cask:thunderbird" = { state = "absent" }
 "brew-cask:proton-mail-bridge" = { state = "absent" }

@@ -105,6 +105,16 @@ for pkg, spec in root_work.get("bootstrap", {}).get("packages", {}).items():
         errs.append(f"repo-root overlay entry {pkg} should only set state = \"absent\"")
     if pkg not in root.get("bootstrap", {}).get("packages", {}):
         errs.append(f"repo-root overlay marks {pkg} absent, which mise.toml never declares")
+# LibreWolf is the personal Mac's one browser and Chrome the work Mac's, so
+# the cask sits in mise.toml with an absent line in the work overlay.
+# LibreWolf replaced Zen, so neither file may name Zen again, even in a comment.
+if root.get("bootstrap", {}).get("packages", {}).get("brew-cask:librewolf") != "latest":
+    errs.append("mise.toml does not declare brew-cask:librewolf = \"latest\", so a personal Mac loses its daily browser")
+if root_work.get("bootstrap", {}).get("packages", {}).get("brew-cask:librewolf") != {"state": "absent"}:
+    errs.append("mise.work.toml does not mark brew-cask:librewolf absent, so the work Mac gets it")
+for name in ("mise.toml", "mise.work.toml"):
+    if re.search(r"\bzen\b", pathlib.Path(name).read_text(), re.I):
+        errs.append(f"{name} names Zen, which LibreWolf replaced")
 # The personal overlay adds dotfiles and hooks. One also in mise.toml would
 # reach the work Mac anyway, which is the one thing this file exists to prevent.
 if set(personal) - {"dotfiles", "bootstrap"}:

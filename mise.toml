@@ -33,7 +33,7 @@ adopt = true
 # the pre-packages hook runs.
 
 "brew-cask:ghostty" = "latest"
-"brew-cask:zen" = "latest"
+"brew-cask:librewolf" = "latest"
 "brew-cask:proton-pass" = "latest"
 "brew-cask:slack" = "latest"                              # personal use too, so not the overlay
 "brew-cask:karabiner-elements" = "latest"
