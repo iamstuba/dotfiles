@@ -264,6 +264,8 @@ for tapped in FelixKratz/formulae/sketchybar FelixKratz/formulae/borders; do
 done
 echo "$out" | grep -q 'brew install --cask .*nikitabobko/tap/aerospace' \
   || fail "brew-tap-packages: install misses nikitabobko/tap/aerospace"
+echo "$out" | grep -q 'NONINTERACTIVE=1 /bin/bash -c .*Homebrew/install' \
+  || fail "brew-tap-packages: Homebrew's installer can prompt"
 out=$(HOME=$tmp_home sh bin/brew-tap-packages upgrade --dry-run) || fail "brew-tap-packages upgrade --dry-run"
 # Separately asserted because `brew upgrade`, unlike `brew install`, will not
 # tap on demand, so an upgrade that lost its formulae fails silently on a
@@ -292,7 +294,15 @@ echo "$out" | grep -q 'run setup-git' || fail "install: setup-git command missin
 echo "$out" | grep -q 'env = \["work"\]' && fail "install: wrote the work overlay on a personal answer"
 echo "$out" | grep -q 'env = \["personal"\]' || fail "install: personal answer did not write miserc.toml"
 out=$(HOME=$tmp_home DOTFILES=$root DOTFILES_WORK=1 GIT_NAME=Test GIT_EMAIL=test@example.com GIT_PROFILES= \
-  sh install.sh --dry-run) || fail "install.sh --dry-run (work)"
+  sh install.sh --dry-run 2>&1) || fail "install.sh --dry-run (work)"
+hint='mise x claude -- claude'
+echo "$out" | grep -qF -- "$hint" && fail "install: a clean dry run printed the failure hint"
+# An empty DOTFILES_WORK with no terminal to ask forces a failure.
+if fail_out=$(HOME=$tmp_home DOTFILES=$root DOTFILES_WORK= GIT_NAME=Test GIT_EMAIL=test@example.com GIT_PROFILES= \
+  sh install.sh --dry-run 2>&1 </dev/null); then
+  fail "install: a failed run exited 0"
+fi
+echo "$fail_out" | grep -qF -- "~/.local/bin/$hint" || fail "install: a failed run printed no mise claude hint"
 echo "$out" | grep -q 'env = \["work"\]' || fail "install: work answer did not write miserc.toml"
 echo "$out" | grep -q 'env = \["personal"\]' && fail "install: wrote the personal overlay on a work answer"
 # The zsh probe below grants the same trust to its own temp HOME, so without

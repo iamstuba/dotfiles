@@ -10,6 +10,22 @@ set -eu
 die() { echo "install: $*" >&2; exit 1; }
 case "${1:-}" in "") ;; --dry-run) DRY_RUN=1 ;; *) die "unknown argument $1" ;; esac
 DOTFILES=${DOTFILES:-$HOME/Projects/iamstuba/dotfiles}
+
+
+# Names the Claude Code mise manages, so nobody installs a second copy to
+# debug with. mise x fetches it if bootstrap has not. Before the clone exists
+# there is nothing to cd into.
+on_exit() {
+  status=$?
+  if [ "$status" != 0 ]; then
+    cd_clone=
+    [ -d "$DOTFILES/.git" ] && cd_clone="cd '$DOTFILES' && "
+    echo "install: failed. To debug, open a second tab and run ${cd_clone}~/.local/bin/mise x claude -- claude" >&2
+  fi
+  exit "$status"
+}
+trap on_exit EXIT
+
 mise=$HOME/.local/bin/mise
 repo=https://github.com/iamstuba/dotfiles.git
 scratch=git@github.com:iamstuba/dotfiles-scratch.git

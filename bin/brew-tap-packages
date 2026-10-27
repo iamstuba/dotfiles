@@ -37,8 +37,17 @@ if [ "$action" = install ]; then
     fi
     printf '+ (all present; a real run would stop here)\n'
   fi
-  if [ ! -x "$brew" ]; then
-    run /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  # NONINTERACTIVE skips the RETURN prompt and makes Homebrew's sudo check
+  # fail at once instead of asking for a password nobody is there to type.
+  # One string for both paths, so the dry run prints what a real run executes.
+  # The dry run prints it without fetching the script, and even where brew is
+  # present, so the smoke test can see it on a bootstrapped Mac.
+  installer='NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+  if [ "${DRY_RUN:-}" ]; then
+    [ -x "$brew" ] && printf '+ (brew present; a real run would skip the installer)\n'
+    printf '+ %s\n' "$installer"
+  elif [ ! -x "$brew" ]; then
+    eval "$installer"
   fi
   # No `brew tap` and no `brew trust`. Measured on Homebrew 7: `brew install`
   # against a fully qualified name taps and trusts on its own, with no prompt
