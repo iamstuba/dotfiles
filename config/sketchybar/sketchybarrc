@@ -1,0 +1,40 @@
+#!/opt/homebrew/bin/bash
+# SketchyBar runs this on start and on --reload. Its scripts see SketchyBar's
+# own environment plus NAME, SENDER and CONFIG_DIR, never what this file
+# exports, so a script that needs more sets it itself or takes an argument.
+
+source "$CONFIG_DIR/colors.sh"
+plugins=$CONFIG_DIR/plugins
+
+# AeroSpace's gaps.outer.top of 40 leaves this strip clear of windows.
+sketchybar --bar height=32 position=top y_offset=0 display=all topmost=off \
+  color="$BAR_COLOR" border_width=0
+
+sketchybar --default \
+  icon.font="Symbols Nerd Font:Regular:14.0" icon.color="$FG" \
+  label.font="Monaspace Neon:Regular:13.0" label.color="$FG" \
+  padding_left=4 padding_right=4
+
+# The device name differs between Macs, and ipconfig needs it.
+wifi_device=$(networksetup -listallhardwareports \
+  | awk '/^Hardware Port: Wi-Fi$/ { getline; print $2; exit }')
+
+# Right items stack leftwards in the order added, so the clock is at the edge.
+sketchybar \
+  --add item clock right \
+  --set clock update_freq=30 script="$plugins/clock.sh" \
+  --add item wifi right \
+  --set wifi update_freq=60 script="$plugins/wifi.sh $wifi_device" \
+    click_script="open 'x-apple.systempreferences:com.apple.wifi-settings-extension'" \
+  --subscribe wifi wifi_change system_woke \
+  --add item battery right \
+  --set battery update_freq=120 script="$plugins/battery.sh" \
+  --subscribe battery power_source_change system_woke \
+  --add item memory right \
+  --set memory update_freq=15 script="$plugins/memory.sh" \
+  --add item cpu right \
+  --set cpu update_freq=5 script="$plugins/cpu.sh" \
+  --add item watchdog right \
+  --set watchdog drawing=off update_freq=10 script="$plugins/watchdog.sh"
+
+sketchybar --update

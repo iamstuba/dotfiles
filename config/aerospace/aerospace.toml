@@ -8,6 +8,8 @@ config-version = 2
 # So the old one is stopped first, and the line waits until it has exited.
 after-startup-command = [
   'exec-and-forget pkill -x borders; for _ in {1..20}; do pgrep -qx borders || break; sleep 0.1; done; source ~/.config/sketchybar/colors.sh && borders style=round width=6 hidpi=on active_color=$ACCENT inactive_color=$GUTTER',
+  # A bar left over from before a logout would make a second one.
+  'exec-and-forget pkill -x sketchybar; for _ in {1..20}; do pgrep -qx sketchybar || break; sleep 0.1; done; sketchybar',
 ]
 
 start-at-login = true

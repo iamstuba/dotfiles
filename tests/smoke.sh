@@ -2008,10 +2008,12 @@ for key, cmd in service.items():
     joined = " ".join(cmd) if isinstance(cmd, list) else str(cmd)
     if "enable" in joined and "mode" in joined:
         errs.append(f"{src}: service bind {key} runs both enable and mode")
-# The bar subscribes to mode-changed, so this file never calls sketchybar.
-# The palette path is the one place the name may appear.
-if "sketchybar" in text.replace("~/.config/sketchybar/colors.sh", ""):
-    errs.append(f"{src}: names sketchybar outside the palette path")
+# The bar subscribes to mode-changed, so this file only starts sketchybar.
+# The colors.sh path and the startup entry are the places the name may appear.
+bar_start = ("exec-and-forget pkill -x sketchybar; for _ in {1..20}; do "
+             "pgrep -qx sketchybar || break; sleep 0.1; done; sketchybar")
+if "sketchybar" in text.replace("~/.config/sketchybar/colors.sh", "").replace(bar_start, ""):
+    errs.append(f"{src}: names sketchybar outside the colors.sh path and the startup entry")
 
 # First match wins, so the float rule has to be last, and 0.21.3 refuses a
 # callback with no if.
@@ -2037,9 +2039,13 @@ for gone in ("app.zen-browser.zen", "net.imput.helium"):
         errs.append(f"{src}: a window callback names {gone}, which this setup dropped")
 
 startup = cfg.get("after-startup-command", [])
-if len(startup) != 1:
-    errs.append(f"{src}: after-startup-command has {len(startup)} entries, expected 1")
+if len(startup) != 2:
+    errs.append(f"{src}: after-startup-command has {len(startup)} entries, expected 2")
 else:
+    # The bar's entry must match Borders' kill and wait exactly, so a dropped wait fails.
+    if startup[1] != bar_start:
+        errs.append(f"{src}: after-startup-command's second entry is {startup[1]!r}, "
+                    f"expected {bar_start!r}")
     # The whole kill and wait, so a dropped bound or a lone pgrep cannot pass.
     stop = ("pkill -x borders; for _ in {1..20}; do pgrep -qx borders || break; "
             "sleep 0.1; done; ")
@@ -2081,6 +2087,273 @@ for e in errs:
 sys.exit(1 if errs else 0)
 AEROSPACE
 ok "aerospace config"
+
+# The bar. Each script runs as SketchyBar runs it, with NAME, SENDER and
+# CONFIG_DIR and nothing else from this shell, against stubs on PATH. The
+# sketchybar stub writes each call as one shell-quoted line, so a label that
+# splits into two arguments shows in the log, and a glyph reads as its code
+# point, such as <U+F4BC>. The other stubs log their arguments, print the
+# case's fixture and exit with its code.
+bar_dir=config/sketchybar
+[ -x /opt/homebrew/bin/bash ] || fail "bar: /opt/homebrew/bin/bash is missing; brew:bash installs it"
+for f in $bar_dir/sketchybarrc $bar_dir/plugins/*; do
+  [ "$(head -n 1 "$f")" = '#!/opt/homebrew/bin/bash' ] \
+    || fail "bar: $f does not start with #!/opt/homebrew/bin/bash"
+  [ -x "$f" ] || fail "bar: $f is not executable"
+  /opt/homebrew/bin/bash -n "$f" || fail "syntax $f"
+  # A theme change must touch colors.sh alone.
+  if grep -Eq '0x[0-9a-fA-F]{8}' "$f"; then fail "bar: $f names a hex colour"; fi
+done
+
+bar=$tmp_home/bar
+mkdir -p "$bar/stubs"
+# The stubs run with an empty environment, where a mise shim finds no python.
+printf '#!%s\n' "$(python3 -c 'import sys; print(sys.executable)')" >"$bar/stubs/sketchybar"
+cat >>"$bar/stubs/sketchybar" <<'EOF'
+import os, re, shlex, sys
+args = ["sketchybar"] + [re.sub(r"[^\x00-\x7f]", lambda m: f"<U+{ord(m[0]):04X}>", a) for a in sys.argv[1:]]
+with open(os.environ["BAR_LOG"], "a") as fh:
+    fh.write(shlex.join(args) + "\n")
+sys.exit(int(os.environ["BAR_SB_EXIT"]))
+EOF
+for name in networksetup pmset ipconfig memory_pressure ps sysctl pgrep date; do
+  cat >"$bar/stubs/$name" <<'EOF'
+#!/bin/sh
+name=${0##*/}
+echo "$name $*" >>"$BAR_LOG"
+if [ -f "$BAR_FIX/$name" ]; then cat "$BAR_FIX/$name"; fi
+exit "$(cat "$BAR_FIX/$name.exit" 2>/dev/null || echo 0)"
+EOF
+done
+chmod +x "$bar"/stubs/*
+
+bar_reset() { rm -rf "$bar/fix"; mkdir "$bar/fix"; : >"$bar/log"; }
+bar_fixture() { # $1: command, $2: what it prints, $3: its exit code
+  printf '%s\n' "$2" >"$bar/fix/$1"
+  echo "${3:-0}" >"$bar/fix/$1.exit"
+}
+bar_run() { # $1: case, $2: script under config/sketchybar, $3: NAME, then its arguments
+  # BAR_SB_EXIT, when set, is the exit code of every sketchybar call.
+  bar_case=$1 bar_script=$2 bar_name=$3
+  shift 3
+  env -i HOME="$bar" PATH="$bar/stubs:/usr/bin:/bin" CONFIG_DIR="$root/$bar_dir" \
+    NAME="$bar_name" SENDER=routine BAR_LOG="$bar/log" BAR_FIX="$bar/fix" BAR_SB_EXIT="${BAR_SB_EXIT:-0}" \
+    "$root/$bar_dir/$bar_script" "$@" 2>"$bar/err" || fail "bar: $bar_case exited nonzero"
+  if [ -s "$bar/err" ]; then fail "bar: $bar_case wrote to stderr: $(cat "$bar/err")"; fi
+}
+bar_log_is() { # $1: the log the last bar_run must have written
+  [ "$(cat "$bar/log")" = "$1" ] || fail "bar: $bar_case logged:
+$(cat "$bar/log")"
+}
+bar_color() { env -i /bin/sh -c '. "./$1" && eval "echo \$$2"' sh $bar_dir/colors.sh "$1"; }
+bar_fg=$(bar_color FG) bar_red=$(bar_color RED)
+
+# The Wi-Fi port is en7 here, so a hard-coded en0 fails.
+bar_reset
+bar_fixture networksetup 'Hardware Port: Ethernet Adapter (en3)
+Device: en3
+Ethernet Address: 4a:54:21:a3:2e:b9
+
+Hardware Port: Wi-Fi
+Device: en7
+Ethernet Address: fc:b2:14:af:90:c5'
+bar_run sketchybarrc sketchybarrc ""
+BAR_LOG=$bar/log CONFIG_DIR=$root/$bar_dir BAR_COLOR=$(bar_color BAR_COLOR) FG=$bar_fg \
+python3 - <<'BAR' || fail "bar: sketchybarrc"
+import os, shlex, sys
+errs = []
+plugins = os.environ["CONFIG_DIR"] + "/plugins"
+lines = open(os.environ["BAR_LOG"]).read().splitlines()
+others = [l for l in lines if not l.startswith("sketchybar ")]
+if others != ["networksetup -listallhardwareports"]:
+    errs.append(f"ran {others}, expected only networksetup -listallhardwareports")
+
+def pairs(args):
+    out = {}
+    for a in args:
+        if "=" not in a:
+            errs.append(f"{a!r} is not property=value")
+            continue
+        k, v = a.split("=", 1)
+        out[k] = v
+    return out
+
+bar, defaults, items, flags = {}, {}, {}, []
+for line in lines:
+    if not line.startswith("sketchybar "):
+        continue
+    argv = shlex.split(line)[1:]
+    i = 0
+    while i < len(argv):
+        flag, args, i = argv[i], [], i + 1
+        while i < len(argv) and not argv[i].startswith("--"):
+            args.append(argv[i])
+            i += 1
+        flags.append(flag)
+        if flag == "--bar":
+            bar.update(pairs(args))
+        elif flag == "--default":
+            defaults.update(pairs(args))
+        elif flag == "--add" and len(args) == 3 and args[0] == "item":
+            items[args[1]] = {"position": args[2], "props": {}, "events": []}
+        elif flag in ("--set", "--subscribe") and args and args[0] in items:
+            if flag == "--set":
+                items[args[0]]["props"].update(pairs(args[1:]))
+            else:
+                items[args[0]]["events"] += args[1:]
+        elif flag != "--update" or args:
+            errs.append(f"unexpected {flag} {args}")
+if not flags or flags[-1] != "--update":
+    errs.append("the last call is not --update, so the readouts wait for their first poll")
+
+want_bar = {"height": "32", "position": "top", "y_offset": "0", "display": "all",
+            "topmost": "off", "color": os.environ["BAR_COLOR"], "border_width": "0"}
+if bar != want_bar:
+    errs.append(f"bar is {bar}, expected {want_bar}")
+want_defaults = {"icon.font": "Symbols Nerd Font:Regular:14.0", "icon.color": os.environ["FG"],
+                 "label.font": "Monaspace Neon:Regular:13.0", "label.color": os.environ["FG"]}
+for k, v in want_defaults.items():
+    if defaults.get(k) != v:
+        errs.append(f"default {k} is {defaults.get(k)!r}, expected {v!r}")
+
+wifi_click = "open 'x-apple.systempreferences:com.apple.wifi-settings-extension'"
+want = [
+    ("clock", "right", {"update_freq": "30", "script": f"{plugins}/clock.sh"}, []),
+    ("wifi", "right", {"update_freq": "60", "script": f"{plugins}/wifi.sh en7",
+                       "click_script": wifi_click}, ["wifi_change", "system_woke"]),
+    ("battery", "right", {"update_freq": "120", "script": f"{plugins}/battery.sh"},
+     ["power_source_change", "system_woke"]),
+    ("memory", "right", {"update_freq": "15", "script": f"{plugins}/memory.sh"}, []),
+    ("cpu", "right", {"update_freq": "5", "script": f"{plugins}/cpu.sh"}, []),
+    ("watchdog", "right", {"update_freq": "10", "script": f"{plugins}/watchdog.sh",
+                           "drawing": "off"}, []),
+]
+if list(items) != [w[0] for w in want]:
+    errs.append(f"items are {list(items)}, expected {[w[0] for w in want]}")
+wiring = ("update_freq", "script", "click_script", "drawing")
+for name, position, props, events in want:
+    item = items.get(name)
+    if item is None:
+        continue
+    got = {k: v for k, v in item["props"].items() if k in wiring}
+    if item["position"] != position:
+        errs.append(f"{name} is at {item['position']}, expected {position}")
+    if got != props:
+        errs.append(f"{name} is wired {got}, expected {props}")
+    if item["events"] != events:
+        errs.append(f"{name} subscribes to {item['events']}, expected {events}")
+    script = item["props"].get("script", "").split(" ")[0]
+    if not os.access(script, os.X_OK):
+        errs.append(f"{name}'s script {script} is not an executable file")
+
+for e in errs:
+    print("  " + e, file=sys.stderr)
+sys.exit(1 if errs else 0)
+BAR
+
+bar_reset
+bar_fixture date '27/10/2026 16:17'
+bar_run "clock" plugins/clock.sh clock
+bar_log_is "date +%d/%m/%Y %H:%M
+sketchybar --set clock drawing=on 'label=27/10/2026 16:17'"
+bar_reset
+bar_fixture date '' 1
+bar_run "clock, date failing" plugins/clock.sh clock
+bar_log_is "date +%d/%m/%Y %H:%M
+sketchybar --set clock drawing=off"
+
+# 32.2 over four cores rounds down to 8.
+bar_reset
+bar_fixture ps '  1.8
+ 10.0
+ 20.4'
+bar_fixture sysctl 4
+bar_run "cpu" plugins/cpu.sh cpu
+bar_log_is "ps -A -o %cpu=
+sysctl -n hw.ncpu
+sketchybar --set cpu drawing=on 'icon=<U+F4BC>' label=8%"
+bar_reset
+bar_fixture ps '  1.8'
+bar_fixture sysctl '' 1
+bar_run "cpu, sysctl failing" plugins/cpu.sh cpu
+bar_log_is "ps -A -o %cpu=
+sysctl -n hw.ncpu
+sketchybar --set cpu drawing=off"
+
+bar_reset
+bar_fixture memory_pressure 'The system has 17179869184 (1048576 pages with a page size of 16384).
+Pageouts: 2585
+
+System-wide memory free percentage: 77%'
+bar_run "memory" plugins/memory.sh memory
+bar_log_is "memory_pressure 
+sketchybar --set memory drawing=on 'icon=<U+F035B>' label=23%"
+bar_reset
+bar_fixture memory_pressure '' 1
+bar_run "memory, memory_pressure failing" plugins/memory.sh memory
+bar_log_is "memory_pressure 
+sketchybar --set memory drawing=off"
+
+# pmset's battery line, with its tab, as this Mac prints it.
+bar_batt() { # $1: power source, $2: percentage, $3: state
+  printf "Now drawing from '%s'\n -InternalBattery-0 (id=27459683)\t%s%%; %s; 6:16 remaining present: true" \
+    "$1" "$2" "$3"
+}
+bar_reset
+bar_fixture pmset "$(bar_batt 'Battery Power' 73 discharging)"
+bar_run "battery discharging" plugins/battery.sh battery
+bar_log_is "pmset -g batt
+sketchybar --set battery drawing=on 'icon=<U+F241>' icon.color=$bar_fg label=73% label.color=$bar_fg"
+bar_reset
+bar_fixture pmset "$(bar_batt 'AC Power' 45 charging)"
+bar_run "battery charging" plugins/battery.sh battery
+bar_log_is "pmset -g batt
+sketchybar --set battery drawing=on 'icon=<U+F0084>' icon.color=$bar_fg label=45% label.color=$bar_fg"
+bar_reset
+bar_fixture pmset "$(bar_batt 'Battery Power' 20 discharging)"
+bar_run "battery at 20%" plugins/battery.sh battery
+bar_log_is "pmset -g batt
+sketchybar --set battery drawing=on 'icon=<U+F243>' icon.color=$bar_red label=20% label.color=$bar_red"
+bar_reset
+bar_fixture pmset "Now drawing from 'AC Power'"
+bar_run "no battery" plugins/battery.sh battery
+bar_log_is "pmset -g batt
+sketchybar --set battery drawing=off"
+
+bar_reset
+bar_fixture ipconfig '<dictionary> {
+  InterfaceType : WiFi
+  LinkStatusActive : TRUE
+}'
+bar_run "wifi active" plugins/wifi.sh wifi en7
+bar_log_is "ipconfig getsummary en7
+sketchybar --set wifi drawing=on 'icon=<U+F05A9>'"
+bar_reset
+bar_fixture ipconfig '<dictionary> {
+  Active : FALSE
+  LinkStatusActive : FALSE
+}'
+bar_run "wifi inactive" plugins/wifi.sh wifi en7
+bar_log_is "ipconfig getsummary en7
+sketchybar --set wifi drawing=on 'icon=<U+F05AA>'"
+bar_reset
+bar_fixture ipconfig '' 1
+bar_run "wifi, ipconfig failing" plugins/wifi.sh wifi en7
+bar_log_is "ipconfig getsummary en7
+sketchybar --set wifi drawing=off"
+bar_reset
+bar_run "no wifi device" plugins/wifi.sh wifi
+bar_log_is "sketchybar --set wifi drawing=off"
+
+bar_reset
+bar_run "watchdog, AeroSpace running" plugins/watchdog.sh watchdog
+bar_log_is "pgrep -qx AeroSpace"
+bar_reset
+bar_fixture pgrep '' 1
+bar_run "watchdog, AeroSpace gone" plugins/watchdog.sh watchdog
+bar_log_is "pgrep -qx AeroSpace
+sketchybar --exit"
+ok "bar"
 
 # Ghostty's file, read by Ghostty. validate-config rejects an unknown key, a
 # bad enum value, an unknown theme and an unknown action, but not an unknown
