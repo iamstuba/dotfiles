@@ -82,7 +82,7 @@ run = """
   fi
   # update:dotfiles resolves the repo the same way. This is the global file, so
   # {{ config_root }} here would be ~, not the repo.
-  repo="${DOTFILES:-$HOME/Projects/iamstuba/dotfiles}"
+  repo="${DOTFILES:-$HOME/projects/iamstuba/dotfiles}"
   # The task runs in ~, where mise finds no [bootstrap.packages] and upgrades
   # nothing. From the repo, mise also reads the overlay that MISE_ENV names.
   mise -C "$repo" bootstrap packages upgrade --yes
@@ -98,7 +98,7 @@ run = 'nvim --headless "+lua vim.pack.update(nil, { force = true })" +qa'
 [tasks."update:dotfiles"]
 description = "Fast-forward this repository when it is on main."
 run = """
-  repo="${DOTFILES:-$HOME/Projects/iamstuba/dotfiles}"
+  repo="${DOTFILES:-$HOME/projects/iamstuba/dotfiles}"
   if [ "$(git -C "$repo" symbolic-ref --short HEAD)" = "main" ]; then
     git -C "$repo" pull --ff-only origin main
   else

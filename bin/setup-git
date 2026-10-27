@@ -9,7 +9,7 @@ die() { echo "setup-git: $*" >&2; exit 1; }
 case "${1:-}" in "") ;; --dry-run) DRY_RUN=1 ;; *) die "unknown argument $1" ;; esac
 run() { if [ "${DRY_RUN:-}" ]; then printf '+ %s\n' "$*"; else "$@"; fi; }
 
-DOTFILES=${DOTFILES:-$HOME/Projects/iamstuba/dotfiles}
+DOTFILES=${DOTFILES:-$HOME/projects/iamstuba/dotfiles}
 github_key=$HOME/.ssh/id_ed25519_github
 gitlab_key=$HOME/.ssh/id_ed25519_gitlab
 scopes=admin:public_key,admin:ssh_signing_key

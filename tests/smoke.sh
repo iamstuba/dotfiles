@@ -734,19 +734,19 @@ sg_local="[user]
 	gpgsign = true"
 printf '%s\n' "$sg_local" >"$h/.gitconfig-local"
 printf '[user]\n\temail = old@example.com\n' >"$h/.gitconfig-work"
-set -- existing GIT_EMAIL=work@example.com GIT_PROFILES='~/Projects/iamstuba=personal@example.com=github,~/Work=w@example.com=gitlab'
+set -- existing GIT_EMAIL=work@example.com GIT_PROFILES='~/projects/iamstuba=personal@example.com=github,~/Work=w@example.com=gitlab'
 before=$(sg_snap existing)
 sg_run "$@" sh "$root/bin/setup-git" --dry-run || fail "setup-git existing --dry-run exited nonzero: $(cat "$sg/existing/out")"
 [ "$(sg_snap existing)" = "$before" ] || fail "setup-git existing --dry-run changed files"
 sg_log_is existing "gh auth status
 glab config get user --host gitlab.com"
-for want in "+ append $h/.gitconfig-local" '    [includeIf "gitdir/i:~/Projects/iamstuba/"]' "+ write $h/.gitconfig-iamstuba"; do
+for want in "+ append $h/.gitconfig-local" '    [includeIf "gitdir/i:~/projects/iamstuba/"]' "+ write $h/.gitconfig-iamstuba"; do
   grep -qxF -- "$want" "$sg/existing/out" || fail "setup-git existing --dry-run did not print '$want': $(cat "$sg/existing/out")"
 done
 sg_run "$@" sh "$root/bin/setup-git" || fail "setup-git existing exited nonzero: $(cat "$sg/existing/out")"
 sg_file_is existing .gitconfig-local "$sg_local
 
-[includeIf \"gitdir/i:~/Projects/iamstuba/\"]
+[includeIf \"gitdir/i:~/projects/iamstuba/\"]
 	path = ~/.gitconfig-iamstuba
 
 [includeIf \"gitdir/i:~/Work/\"]

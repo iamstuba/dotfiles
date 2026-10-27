@@ -13,7 +13,7 @@ export SHELL_SESSIONS_DISABLE=1
 
 # ${(%):-%N} is the path of the file being sourced, which is the ~/.zshenv
 # symlink. Resolving it and stepping up out of home/ finds the clone wherever
-# it sits, so nothing here names ~/Projects.
+# it sits, so nothing here names ~/projects.
 export DOTFILES="$(dirname "$(dirname "$(readlink -f "${(%):-%N}")")")"
 
 export EDITOR='nvim'

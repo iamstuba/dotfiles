@@ -9,7 +9,7 @@ set -eu
 
 die() { echo "install: $*" >&2; exit 1; }
 case "${1:-}" in "") ;; --dry-run) DRY_RUN=1 ;; *) die "unknown argument $1" ;; esac
-DOTFILES=${DOTFILES:-$HOME/Projects/iamstuba/dotfiles}
+DOTFILES=${DOTFILES:-$HOME/projects/iamstuba/dotfiles}
 
 
 # Names the Claude Code mise manages, so nobody installs a second copy to

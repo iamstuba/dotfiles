@@ -2,8 +2,8 @@
 
 # Two characters to reach either tree, with <TAB> completing against that
 # directory rather than the cwd.
-c() { cd "$HOME/Projects/$1" }
-_c() { _files -W "$HOME/Projects" -/ }
+c() { cd "$HOME/projects/$1" }
+_c() { _files -W "$HOME/projects" -/ }
 
 h() { cd "$HOME/$1" }
 _h() { _files -W "$HOME" -/ }
