@@ -22,4 +22,8 @@
 
 # Runs after mise.toml's post-defaults hook: hooks from every loaded file run.
 [bootstrap.hooks.post-defaults]
-run = "{{ config_root }}/bin/remove-bundled-apps"  # absolute: a bare path would follow the caller's cwd
+# absolute: a bare path would follow the caller's cwd
+run = [
+  "{{ config_root }}/bin/remove-bundled-apps",
+  "{{ config_root }}/bin/librewolf-policies",
+]

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- LibreWolf reads policies from its own defaults domain only when this is true. -->
+  <key>EnterprisePoliciesEnabled</key>
+  <true/>
+
+  <!-- Replaces LibreWolf's whole ExtensionSettings, so its "*" and uBO
+       entries are restated from its policies.json. -->
+  <key>ExtensionSettings</key>
+  <dict>
+    <key>*</key>
+    <dict>
+      <key>blocked_install_message</key>
+      <string>LibreWolf does not allow installing Language Packs.</string>
+      <key>installation_mode</key>
+      <string>allowed</string>
+      <key>allowed_types</key>
+      <array>
+        <string>dictionary</string>
+        <string>extension</string>
+        <string>sitepermission</string>
+        <string>theme</string>
+      </array>
+    </dict>
+    <key>uBlock0@raymondhill.net</key>
+    <dict>
+      <key>install_url</key>
+      <string>https://addons.mozilla.org/firefox/downloads/latest/uBlock0@raymondhill.net/latest.xpi</string>
+      <key>installation_mode</key>
+      <string>normal_installed</string>
+      <key>private_browsing</key>
+      <true/>
+    </dict>
+    <key>78272b6fa58f4a1abaac99321d503a20@proton.me</key>
+    <dict>
+      <key>install_url</key>
+      <string>https://addons.mozilla.org/firefox/downloads/latest/78272b6fa58f4a1abaac99321d503a20@proton.me/latest.xpi</string>
+      <key>installation_mode</key>
+      <string>normal_installed</string>
+      <key>private_browsing</key>
+      <true/>
+    </dict>
+    <!-- Refined GitHub, by GUID: another AMO listing shares its name. -->
+    <key>{a4c4eda4-fb84-4a84-b4a1-f7c1cbf2a1ad}</key>
+    <dict>
+      <key>install_url</key>
+      <string>https://addons.mozilla.org/firefox/downloads/latest/{a4c4eda4-fb84-4a84-b4a1-f7c1cbf2a1ad}/latest.xpi</string>
+      <key>installation_mode</key>
+      <string>normal_installed</string>
+    </dict>
+  </dict>
+
+  <!-- Sets browser.startup.page to 3 as a default, not a lock. -->
+  <key>Homepage</key>
+  <dict>
+    <key>StartPage</key>
+    <string>previous-session</string>
+  </dict>
+</dict>
+</plist>

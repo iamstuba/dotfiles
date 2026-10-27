@@ -125,6 +125,10 @@ if "remove-bundled-apps" not in json.dumps(personal.get("bootstrap", {}).get("ho
     errs.append("personal overlay no longer runs remove-bundled-apps")
 if "remove-bundled-apps" in json.dumps(root.get("bootstrap", {}).get("hooks", {})):
     errs.append("mise.toml runs remove-bundled-apps, so the work Mac loses its apps too")
+if "librewolf-policies" not in json.dumps(personal.get("bootstrap", {}).get("hooks", {})):
+    errs.append("personal overlay no longer runs librewolf-policies, so Proton Pass and Refined GitHub never install")
+if "librewolf-policies" in json.dumps(root.get("bootstrap", {}).get("hooks", {})):
+    errs.append("mise.toml runs librewolf-policies, so the work Mac gets a LibreWolf domain")
 for target in personal.get("dotfiles", {}):
     if target in root.get("dotfiles", {}):
         errs.append(f"{target} is in both mise.toml and mise.personal.toml, so work gets it too")
@@ -261,8 +265,77 @@ echo "$out" | grep -q 'dict-add 65 ' || fail "post-defaults: hotkey 65 missing"
 ok "macos-post-defaults --dry-run"
 
 HOME=$tmp_home sh bin/remove-bundled-apps --dry-run >/dev/null || fail "remove-bundled-apps --dry-run"
-sh bin/remove-bundled-apps --bogus >/dev/null 2>&1 && fail "remove-bundled-apps: unknown argument accepted"
+# The --bogus calls set DRY_RUN=1, so a parser that wrongly accepts the
+# argument still only prints and leaves this Mac alone.
+DRY_RUN=1 sh bin/remove-bundled-apps --bogus >/dev/null 2>&1 && fail "remove-bundled-apps: unknown argument accepted"
 ok "remove-bundled-apps --dry-run"
+
+# LibreWolf's policies. Firefox merges policy sources by top-level key, so the
+# tracked ExtensionSettings replaces LibreWolf's whole block and must restate
+# its "*" and uBlock Origin entries.
+lw_plist=assets/librewolf-policies.plist
+plutil -lint -s "$lw_plist" || fail "$lw_plist does not lint"
+lw_json=$(plutil -convert json -o - "$lw_plist") || fail "$lw_plist does not convert to JSON"
+lw_out=$(HOME=$tmp_home sh bin/librewolf-policies --dry-run) || fail "librewolf-policies --dry-run"
+DRY_RUN=1 sh bin/librewolf-policies --bogus >/dev/null 2>&1 && fail "librewolf-policies: unknown argument accepted"
+# A Mac without LibreWolf skips the bundled policies.json comparison. Set
+# LIBREWOLF_APP to a fake bundle to run it there.
+LW_JSON=$lw_json LW_OUT=$lw_out LW_APP=${LIBREWOLF_APP:-/Applications/LibreWolf.app} \
+python3 - <<'PY' || fail "librewolf policies"
+import json, os, pathlib, sys
+
+policies = json.loads(os.environ["LW_JSON"])
+errs = []
+# The script and the plist each list the keys, so this compares the two.
+# defaults import would wipe the keys Gecko writes, so only per-key writes pass.
+written = []
+for line in os.environ["LW_OUT"].splitlines():
+    words = line.split()
+    if words[:4] != ["+", "defaults", "write", "net.librewolf.librewolf"] or len(words) < 6:
+        errs.append(f"librewolf-policies --dry-run printed {line[:80]!r}, not a defaults write of one key")
+    else:
+        written.append(words[4])
+if sorted(written) != sorted(policies):
+    errs.append(f"librewolf-policies writes {written}, but the plist holds {sorted(policies)}")
+want = {"EnterprisePoliciesEnabled", "ExtensionSettings", "Homepage"}
+if set(policies) != want:
+    errs.append(f"plist top-level keys are {sorted(policies)}, not {sorted(want)}; each one overrides LibreWolf's own policy of that name")
+if policies.get("EnterprisePoliciesEnabled") is not True:
+    errs.append("EnterprisePoliciesEnabled is not true, so LibreWolf ignores its defaults domain")
+if policies.get("Homepage") != {"StartPage": "previous-session"}:
+    errs.append("Homepage is not just StartPage = previous-session, so the tabs do not come back")
+ext = policies.get("ExtensionSettings", {})
+addons = {
+    "uBlock0@raymondhill.net",
+    "78272b6fa58f4a1abaac99321d503a20@proton.me",
+    "{a4c4eda4-fb84-4a84-b4a1-f7c1cbf2a1ad}",
+}
+if set(ext) != addons | {"*"}:
+    errs.append(f"ExtensionSettings holds {sorted(ext)}, not *, uBlock Origin, Proton Pass and Refined GitHub")
+for guid in sorted(addons & set(ext)):
+    if ext[guid].get("installation_mode") != "normal_installed":
+        errs.append(f"{guid} is not normal_installed, so it either never installs or cannot be disabled")
+    # A URL naming another GUID would install whatever that listing is.
+    if guid not in ext[guid].get("install_url", ""):
+        errs.append(f"{guid}'s install_url does not name its own GUID")
+if "locale" in ext.get("*", {}).get("allowed_types", ["locale"]):
+    errs.append("ExtensionSettings * allows language packs, which LibreWolf blocks")
+# Catches LibreWolf changing its own entries upstream, which the tracked block
+# would otherwise silently undo.
+app = pathlib.Path(os.environ["LW_APP"])
+if app.exists():
+    bundled = json.loads((app / "Contents/Resources/distribution/policies.json").read_text())
+    for key, entry in bundled["policies"]["ExtensionSettings"].items():
+        if ext.get(key) != entry:
+            errs.append(f"ExtensionSettings {key} differs from {app.name}'s bundled policies.json; restate LibreWolf's entry")
+else:
+    print(f"skip LibreWolf bundled policies: {app} is missing")
+
+for e in errs:
+    print("  " + e, file=sys.stderr)
+sys.exit(1 if errs else 0)
+PY
+ok "librewolf policies"
 
 # The tap packages, which mise cannot resolve and so never appears in the
 # bootstrap plan beyond the hook line that calls this. This script is the only

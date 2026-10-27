@@ -43,6 +43,14 @@ Mail, on a personal Mac only
 - Thunderbird: add the Proton account from Bridge's settings, accept the certificate exceptions; add Gmail directly.
 - Thunderbird quiet: `user_pref("mail.biff.show_alert", false);` in the profile's `user.js`. After the first alert, turn off "Badge app icon" for Thunderbird in System Settings > Notifications.
 
+LibreWolf, on a personal Mac only
+
+- Set it as the default browser in System Settings > Desktop & Dock. It never asks, and no script can set it without a confirmation dialog.
+- Sign in to Proton Pass. Proton Pass and Refined GitHub install themselves on first launch.
+- Cookies and site storage clear on every quit. History, downloads and form data stay. Allow each site you want to stay logged in to as you go. The allow list lives in the profile and is not tracked.
+- Sites show UTC time and the window opens at 1600x900. That is fingerprinting resistance, on purpose.
+- Netflix and Spotify do not play. DRM is off on purpose.
+
 Slack
 
 - Preferences > Appearance > Custom theme, paste `#1a1b26,#16161e,#bb9af7,#283457`.
@@ -95,7 +103,7 @@ file does not exist, and `mise run check` warns when it finds one.
 - `config/mise/config.toml`: tools, settings, update tasks. Symlinked to `~/.config/mise/`.
 - `config/mise/config.work.toml`: work-only tools and packages, none today, loaded when `MISE_ENV` includes `work`.
 - `config/mise/config.personal.toml`: pi and its tasks, loaded when `MISE_ENV` includes `personal`.
-- `mise.work.toml`: packages turned off at work. `mise.personal.toml`: the dotfiles, pi's among them, and the bundled app removal a work Mac must not get. Each links its own global overlay. The installer sets `MISE_ENV` to exactly one of `work` and `personal`.
+- `mise.work.toml`: packages turned off at work. `mise.personal.toml`: the dotfiles, pi's among them, the bundled app removal and the LibreWolf policies a work Mac must not get. Each links its own global overlay. The installer sets `MISE_ENV` to exactly one of `work` and `personal`.
 - `config/`: mirrors `~/.config`. `home/`: top-level dotfiles. `bin/`: scripts on PATH.
 - `install.sh`, `tests/smoke.sh`, `assets/`.
 

@@ -1,0 +1,26 @@
+#!/bin/sh
+# Personal post-defaults hook: writes LibreWolf's enterprise policies from
+# assets/librewolf-policies.plist into its defaults domain, where its policy
+# reader looks. Only mise.personal.toml runs it. --dry-run or DRY_RUN=1 prints.
+set -eu
+
+case "${1:-}" in
+  "") ;;
+  --dry-run) DRY_RUN=1 ;;
+  *) echo "librewolf-policies: unknown argument $1" >&2; exit 1 ;;
+esac
+# The value is a whole XML plist, so the dry run folds it onto one line.
+run() {
+  if [ "${DRY_RUN:-}" ]; then printf '+ %s\n' "$(printf '%s' "$*" | tr -s '\n\t' '  ')"; else "$@"; fi
+}
+
+# Hooks run from an unknown cwd, so the plist resolves from this script.
+plist="$(dirname "$0")/../assets/librewolf-policies.plist"
+
+# One key at a time: defaults import would replace the whole domain, and Gecko
+# keeps its own keys there. A key dropped from the plist stays in the domain
+# until `defaults delete net.librewolf.librewolf <key>`.
+for key in EnterprisePoliciesEnabled ExtensionSettings Homepage; do
+  value=$(plutil -extract "$key" xml1 -o - "$plist")
+  run defaults write net.librewolf.librewolf "$key" "$value"
+done

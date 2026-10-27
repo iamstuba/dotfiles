@@ -125,7 +125,7 @@ The field on Cmd+Space that opens apps, pastes from clipboard history and answer
 _Avoid_: Spotlight, Raycast, search bar
 
 **Daily browser**:
-LibreWolf, the browser on a personal Mac. Holds the personal session and everything that is not work. Its prefs and its enterprise policies are tracked; the cookie exceptions that survive its shutdown clearing are not.
+LibreWolf, the browser on a personal Mac. Holds the personal session and everything that is not work. Its enterprise policies are tracked; the cookie exceptions that survive its shutdown clearing are not.
 _Avoid_: main browser, default browser, Zen
 
 **Work browser**:
