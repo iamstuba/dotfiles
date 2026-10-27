@@ -136,6 +136,38 @@ NSGlobalDomain.AppleMenuBarVisibleInFullscreen = false
 "com.apple.controlcenter".AutoHideMenuBarOption = 0
 NSGlobalDomain."com.apple.mouse.scaling" = 1.0              # seeded from a trackpad, corrected for the mouse in the settings pass
 "com.apple.Terminal".SecureKeyboardEntry = false            # while Terminal is in front it blocks every AeroSpace and Vorssaint hotkey
+# Vorssaint seeds only what differs from the app's defaults. mise writes them
+# before the final hook first opens the app. Several modules ship with their
+# switch unset.
+"com.vorssaint.utils".commandBarShortcut = "command:49"     # Cmd+Space; the Command Bar ships unbound
+"com.vorssaint.utils".commandBarShortcutEnabled = true
+"com.vorssaint.utils".commandBarCompactMode = true
+"com.vorssaint.utils".launchAtLoginWanted = true
+"com.vorssaint.utils".panelShowControls = false
+"com.vorssaint.utils".panelShowToggles = false
+"com.vorssaint.utils".quitProtectionQuitHoldDurationMs = 250.0  # the app stores a float
+"com.vorssaint.utils".quitProtectionQuitShowFeedback = false
+"com.vorssaint.utils".quitProtectionCloseShowFeedback = false
+"com.vorssaint.utils"."featureAvailable.commandBar" = true
+"com.vorssaint.utils"."featureAvailable.clipboardHistory" = true
+"com.vorssaint.utils"."featureAvailable.urlCleaner" = true
+"com.vorssaint.utils"."featureAvailable.finderCutPaste" = true
+"com.vorssaint.utils"."featureAvailable.quitWindowProtection" = true
+"com.vorssaint.utils"."featureAvailable.smoothScroll" = true
+"com.vorssaint.utils"."featureAvailable.scrollInverter" = true
+"com.vorssaint.utils"."featureAvailable.mouseAcceleration" = true
+"com.vorssaint.utils"."featureAvailable.musicBlock" = true
+"com.vorssaint.utils"."featureAvailable.audioPriority" = true
+"com.vorssaint.utils".clipboardHistoryEnabled = true
+"com.vorssaint.utils".urlCleanerEnabled = true
+"com.vorssaint.utils".finderCutPasteEnabled = true
+"com.vorssaint.utils".quitProtectionQuitEnabled = true
+"com.vorssaint.utils".smoothScrollEnabled = true
+"com.vorssaint.utils".scrollInverterEnabled = true
+"com.vorssaint.utils".mouseAccelerationDisabled = true
+"com.vorssaint.utils".musicBlockEnabled = true
+"com.vorssaint.utils".audioPriorityInputEnabled = true
+"com.vorssaint.utils".audioPriorityOutputEnabled = true
 
 # ------------------------------------------------------------------- hooks --
 # Hooks run on system binaries only; anything needing a manifest tool is in

@@ -186,6 +186,16 @@ for domain, keys in root["bootstrap"]["macos"].get("defaults", {}).items():
         if not isinstance(value, (bool, int, float, str)):
             errs.append(f"defaults {domain}.{key} is a {type(value).__name__}; mise skips arrays and dicts")
 
+# Onboarding state and usage history would carry this Mac's state to the next
+# one. The audio priority device lists would too, and the scalar check above
+# already refuses them.
+vorssaint = root["bootstrap"]["macos"].get("defaults", {}).get("com.vorssaint.utils", {})
+for key in {"hasOnboarded", "commandBarQueryHabits", "commandBarUsage"} & set(vorssaint):
+    errs.append(f"defaults com.vorssaint.utils.{key} is this Mac's state, not a setting")
+# The app stores the hold as a float, and mise would write 250 as an integer.
+if not isinstance(vorssaint.get("quitProtectionQuitHoldDurationMs"), float):
+    errs.append("defaults com.vorssaint.utils.quitProtectionQuitHoldDurationMs is missing or not a float")
+
 hooks = set(root["bootstrap"].get("hooks", {}))
 if hooks != {"pre-packages", "post-defaults", "final"}:
     errs.append(f"hooks are {sorted(hooks)}")

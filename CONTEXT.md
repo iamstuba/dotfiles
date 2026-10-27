@@ -121,7 +121,7 @@ One named section of the smoke test, passing or failing on its own line. Asks th
 _Avoid_: block, check, assertion, case
 
 **Launcher**:
-The field on Cmd+Space that opens apps, pastes from clipboard history and answers sums. Vorssaint's Command Bar. Searches files only in named folders.
+The field on Cmd+Space that opens apps, pastes from clipboard history and answers sums. Vorssaint's Command Bar.
 _Avoid_: Spotlight, Raycast, search bar
 
 **Daily browser**:
