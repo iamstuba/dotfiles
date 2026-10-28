@@ -57,6 +57,26 @@ sketchybar \
   --add item watchdog right \
   --set watchdog drawing=off update_freq=10 script="$plugins/watchdog.sh"
 
+# Added last, so they sit nearest the notch. The single quotes leave $NAME
+# for SketchyBar to expand at the click. review.sh fills the rows and gives
+# each its URL.
+for forge in gitlab github; do
+  chip=review.$forge
+  review=(--add item "$chip" right
+    --set "$chip" drawing=off update_freq=120 script="$plugins/review.sh $forge"
+      click_script='sketchybar --set $NAME popup.drawing=toggle'
+      label.padding_left=3 background.color="$ITEM_BG" background.corner_radius=6
+      background.height=24 popup.background.color="$POPUP_BG"
+      popup.background.border_color="$HAIRLINE" popup.background.border_width=1
+      popup.background.corner_radius=6
+    --subscribe "$chip" system_woke)
+  for n in {1..10}; do
+    review+=(--add item "$chip.row.$n" "popup.$chip"
+      --set "$chip.row.$n" drawing=off icon.drawing=off)
+  done
+  sketchybar "${review[@]}"
+done
+
 # The loop starts after the items exist, since a --set on a missing item ends
 # it. It ends an older copy of itself, so a reload leaves one.
 "$plugins/aerospace_events.sh" &

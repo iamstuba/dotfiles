@@ -2197,7 +2197,7 @@ with open(os.environ["BAR_LOG"], "a") as fh:
     fh.write(shlex.join(args) + "\n")
 sys.exit(int(os.environ["BAR_SB_EXIT"]))
 EOF
-for name in networksetup pmset ipconfig memory_pressure ps sysctl pgrep date; do
+for name in networksetup pmset ipconfig memory_pressure ps sysctl pgrep date open; do
   cat >"$bar/stubs/$name" <<'EOF'
 #!/bin/sh
 name=${0##*/}
@@ -2362,6 +2362,14 @@ want += [
     ("watchdog", "right", {"update_freq": "10", "script": f"{plugins}/watchdog.sh",
                            "drawing": "off"}, []),
 ]
+# Added last, so they sit nearest the notch. The chips stay hidden until their
+# first fetch, and each popup's ten rows until a fetch fills them.
+for forge in ("gitlab", "github"):
+    chip = f"review.{forge}"
+    want.append((chip, "right", {"update_freq": "120", "script": f"{plugins}/review.sh {forge}",
+                                 "click_script": "sketchybar --set $NAME popup.drawing=toggle",
+                                 "drawing": "off"}, ["system_woke"]))
+    want += [(f"{chip}.row.{n}", f"popup.{chip}", {"drawing": "off"}, []) for n in range(1, 11)]
 if list(items) != [w[0] for w in want]:
     errs.append(f"items are {list(items)}, expected {[w[0] for w in want]}")
 wiring = ("update_freq", "script", "click_script", "drawing", "label.font")
@@ -2515,6 +2523,192 @@ bar_reset
 bar_fixture aerospace.windows '' 1
 bar_run "workspaces, aerospace failing" plugins/workspaces.sh workspace.1
 bar_log_is "aerospace list-windows --all --format %{workspace}|%{app-name}"
+
+# gh and glab are mise tools, so their stubs sit only in the shims directory,
+# which bar_run leaves off PATH. Each answers from a fixture per subcommand,
+# such as gh.api, and glab records the variables it saw.
+bar_shims=$bar/.local/share/mise/shims
+mkdir -p "$bar_shims"
+cat >"$bar_shims/gh" <<'EOF'
+#!/bin/sh
+echo "gh $*" >>"$BAR_LOG"
+key=gh.$1
+if [ -f "$BAR_FIX/$key" ]; then cat "$BAR_FIX/$key"; fi
+exit "$(cat "$BAR_FIX/$key.exit" 2>/dev/null || echo 0)"
+EOF
+cat >"$bar_shims/glab" <<'EOF'
+#!/bin/sh
+echo "glab $*" >>"$BAR_LOG"
+echo "$GLAB_CONFIG_DIR $GLAB_SEND_TELEMETRY $GITLAB_HOST $GLAB_CHECK_UPDATE" >>"$BAR_FIX/glab.env"
+key=glab.$1
+if [ -f "$BAR_FIX/$key" ]; then cat "$BAR_FIX/$key"; fi
+exit "$(cat "$BAR_FIX/$key.exit" 2>/dev/null || echo 0)"
+EOF
+chmod +x "$bar_shims"/*
+# The stub sketchybar's log line for these arguments.
+bar_line() { python3 -c 'import shlex, sys; print(shlex.join(sys.argv[1:]))' sketchybar "$@"; }
+
+bar_reset
+bar_fixture gh.auth 'You are not logged into any GitHub hosts.' 1
+bar_run "github chip, no login" plugins/review.sh review.github github
+bar_log_is "gh auth status
+$(bar_line --set review.github drawing=off popup.drawing=off)"
+
+bar_gh_query='gh api -X GET search/issues -f q=is:pr is:open draft:false archived:false review-requested:@me -f per_page=10'
+bar_gh_items() { # $1: how many rows, numbered from 1
+  python3 - "$1" <<'EOF'
+import json, sys
+print(",".join(json.dumps({"repository_url": "https://api.github.com/repos/acme/web", "number": n,
+                           "title": f"Fix bug {n}", "html_url": f"https://github.com/acme/web/pull/{n}"})
+               for n in range(1, int(sys.argv[1]) + 1)))
+EOF
+}
+# The stub's log line for a chip showing $3 with $4 rows. Row n reads
+# "$5n  Fix bug n" and opens "$6n".
+bar_review_line() { # $1: forge, $2: icon, $3: count, $4: rows shown, $5: label prefix, $6: URL prefix
+  python3 - "$@" <<'EOF'
+import shlex, sys
+forge, icon, count, shown, label, url = sys.argv[1:]
+chip = f"review.{forge}"
+args = ["sketchybar", "--set", chip, "drawing=on", f"icon={icon}", f"label={count}"]
+for n in range(1, 11):
+    if n <= int(shown):
+        args += ["--set", f"{chip}.row.{n}", "drawing=on", f"label={label}{n}  Fix bug {n}",
+                 f"click_script=open '{url}{n}'; sketchybar --set {chip} popup.drawing=off"]
+    else:
+        args += ["--set", f"{chip}.row.{n}", "drawing=off"]
+print(shlex.join(args))
+EOF
+}
+# The search returns at most ten rows but the whole count.
+bar_reset
+bar_fixture gh.api "{\"total_count\": 14, \"items\": [$(bar_gh_items 10)]}"
+bar_run "github chip, 14 requests" plugins/review.sh review.github github
+bar_log_is "gh auth status
+$bar_gh_query
+$(bar_review_line github '<U+F09B>' 14 10 acme/web# https://github.com/acme/web/pull/)"
+bar_reset
+bar_fixture gh.api "{\"total_count\": 3, \"items\": [$(bar_gh_items 3)]}"
+bar_run "github chip, 3 requests" plugins/review.sh review.github github
+bar_log_is "gh auth status
+$bar_gh_query
+$(bar_review_line github '<U+F09B>' 3 3 acme/web# https://github.com/acme/web/pull/)"
+bar_reset
+bar_fixture gh.api '{"total_count": 0, "items": []}'
+bar_run "github chip, none" plugins/review.sh review.github github
+bar_log_is "gh auth status
+$bar_gh_query
+$(bar_line --set review.github drawing=off popup.drawing=off)"
+bar_reset
+bar_fixture gh.api '{"message": "Bad credentials"}' 1
+bar_run "github chip, api failing" plugins/review.sh review.github github
+bar_log_is "gh auth status
+$bar_gh_query
+$(bar_line --set review.github drawing=off popup.drawing=off)"
+
+# Forge text comes from strangers. A hostile title must reach the label as
+# text. sh runs the row's click as SketchyBar does, and the click must open
+# the hostile URL as one argument and run nothing else.
+bar_hostile_is() { # $1: the chip, $2: row 1's label, $3: the URL its click opens
+  bar_click=$(BAR_LOG=$bar/log CHIP=$1 WANT=$2 python3 - <<'EOF'
+import os, shlex, sys
+chip, want = os.environ["CHIP"], "label=" + os.environ["WANT"]
+argv = shlex.split(open(os.environ["BAR_LOG"]).read().splitlines()[-1])
+row = argv[argv.index(f"{chip}.row.1") + 1:argv.index(f"{chip}.row.2") - 1]
+if row[:2] != ["drawing=on", want]:
+    sys.exit(f"  row 1 is {row}, expected {want!r}")
+print(row[2].removeprefix("click_script="))
+EOF
+  ) || fail "bar: $bar_case: $(cat "$bar/log")"
+  : >"$bar/log"
+  (cd "$bar/tmp" && env -i PATH="$bar/stubs:/usr/bin:/bin" BAR_LOG="$bar/log" BAR_FIX="$bar/fix" BAR_SB_EXIT=0 \
+    /bin/sh -c "$bar_click") || fail "bar: $bar_case: the row's click failed"
+  [ ! -e "$bar/tmp/pwned" ] || fail "bar: $bar_case: the row's click ran the URL as shell"
+  bar_case="$bar_case, the row's click"
+  bar_log_is "open $3
+$(bar_line --set "$1" popup.drawing=off)"
+}
+bar_hostile_title='it'"'"'s $(touch pwned); touch pwned\tnow'
+bar_hostile_label="it's \$(touch pwned); touch pwned now"
+bar_reset
+bar_fixture gh.api '{"total_count": 1, "items": [{"repository_url": "https://api.github.com/repos/acme/web",
+  "number": 7, "title": "'"$bar_hostile_title"'", "html_url": "https://github.com/acme/web/pull/7?q='"'"';touch pwned;'"'"'"}]}'
+bar_run "github chip, hostile title" plugins/review.sh review.github github
+bar_hostile_is review.github "acme/web#7  $bar_hostile_label" "https://github.com/acme/web/pull/7?q=';touch pwned;'"
+
+# A personal Mac has no glab at all.
+bar_reset
+mv "$bar_shims/glab" "$bar/glab.away"
+bar_run "gitlab chip, no glab" plugins/review.sh review.gitlab gitlab
+mv "$bar/glab.away" "$bar_shims/glab"
+bar_log_is "$(bar_line --set review.gitlab drawing=off popup.drawing=off)"
+# glab config get reads only the config file, so it costs no request.
+bar_reset
+bar_run "gitlab chip, no login" plugins/review.sh review.gitlab gitlab
+bar_log_is "glab config get user --host gitlab.com
+$(bar_line --set review.gitlab drawing=off popup.drawing=off)"
+
+bar_gl_query='glab api --hostname gitlab.com graphql -f query={ currentUser { reviewRequestedMergeRequests(state: opened, draft: false, reviewStates: [UNREVIEWED, REVIEW_STARTED, UNAPPROVED], first: 10, sort: UPDATED_DESC) { count nodes { iid title webUrl project { fullPath } } } } }'
+bar_gl_json() { # $1: the count, $2: how many rows, numbered from 1
+  python3 - "$1" "$2" <<'EOF'
+import json, sys
+nodes = [{"iid": str(n), "title": f"Fix bug {n}", "project": {"fullPath": "acme/platform/api"},
+          "webUrl": f"https://gitlab.com/acme/platform/api/-/merge_requests/{n}"}
+         for n in range(1, int(sys.argv[2]) + 1)]
+print(json.dumps({"data": {"currentUser": {"reviewRequestedMergeRequests":
+                                           {"count": int(sys.argv[1]), "nodes": nodes}}}}))
+EOF
+}
+bar_reset
+bar_fixture glab.config someone
+bar_fixture glab.api "$(bar_gl_json 14 10)"
+bar_run "gitlab chip, 14 requests" plugins/review.sh review.gitlab gitlab
+bar_log_is "glab config get user --host gitlab.com
+$bar_gl_query
+$(bar_review_line gitlab '<U+F296>' 14 10 'acme/platform/api!' https://gitlab.com/acme/platform/api/-/merge_requests/)"
+# Unset, a glab that runs before any login writes a second config under
+# Application Support, sends telemetry, checks for updates or follows a stray
+# host.
+[ "$(sort -u "$bar/fix/glab.env")" = "$bar/.config/glab-cli 0 gitlab.com false" ] \
+  || fail "bar: gitlab chip: glab saw GLAB_CONFIG_DIR, GLAB_SEND_TELEMETRY, GITLAB_HOST and GLAB_CHECK_UPDATE as:
+$(cat "$bar/fix/glab.env")"
+bar_reset
+bar_fixture glab.config someone
+bar_fixture glab.api "$(bar_gl_json 3 3)"
+bar_run "gitlab chip, 3 requests" plugins/review.sh review.gitlab gitlab
+bar_log_is "glab config get user --host gitlab.com
+$bar_gl_query
+$(bar_review_line gitlab '<U+F296>' 3 3 'acme/platform/api!' https://gitlab.com/acme/platform/api/-/merge_requests/)"
+bar_reset
+bar_fixture glab.config someone
+bar_fixture glab.api "$(bar_gl_json 0 0)"
+bar_run "gitlab chip, none" plugins/review.sh review.gitlab gitlab
+bar_log_is "glab config get user --host gitlab.com
+$bar_gl_query
+$(bar_line --set review.gitlab drawing=off popup.drawing=off)"
+# Every glab failure exits 1, and a revoked token answers with a null user.
+bar_reset
+bar_fixture glab.config someone
+bar_fixture glab.api '{"message":"401 Unauthorized"}' 1
+bar_run "gitlab chip, api failing" plugins/review.sh review.gitlab gitlab
+bar_log_is "glab config get user --host gitlab.com
+$bar_gl_query
+$(bar_line --set review.gitlab drawing=off popup.drawing=off)"
+bar_reset
+bar_fixture glab.config someone
+bar_fixture glab.api '{"data":{"currentUser":null}}'
+bar_run "gitlab chip, null user" plugins/review.sh review.gitlab gitlab
+bar_log_is "glab config get user --host gitlab.com
+$bar_gl_query
+$(bar_line --set review.gitlab drawing=off popup.drawing=off)"
+bar_reset
+bar_fixture glab.config someone
+bar_fixture glab.api '{"data": {"currentUser": {"reviewRequestedMergeRequests": {"count": 1, "nodes": [{"iid": "7",
+  "title": "'"$bar_hostile_title"'", "project": {"fullPath": "acme/platform/api"},
+  "webUrl": "https://gitlab.com/acme/platform/api/-/merge_requests/7?q='"'"';touch pwned;'"'"'"}]}}}}'
+bar_run "gitlab chip, hostile title" plugins/review.sh review.gitlab gitlab
+bar_hostile_is review.gitlab "acme/platform/api!7  $bar_hostile_label" \
+  "https://gitlab.com/acme/platform/api/-/merge_requests/7?q=';touch pwned;'"
 
 bar_sb_log_is() { # $1: the sketchybar calls the last bar_run must have made
   [ "$(grep '^sketchybar ' "$bar/log")" = "$1" ] || fail "bar: $bar_case logged:
