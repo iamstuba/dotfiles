@@ -1459,14 +1459,16 @@ probe_yaml "eza theme" config/eza/theme.yml '{
 # lazygit, parsed rather than run. It has no flag that dumps the config it
 # resolved, only its defaults, and it wants a terminal. One theme colour is
 # enough: it fails when the theme block is absent, truncated or recoloured.
+# git.paging is lazygit's old pager key, which 0.66 migrates away from by
+# rewriting this file through the symlink.
 probe_yaml "lazygit config" config/lazygit/config.yml '{
   "os.editPreset": "nvim-remote",
   "gui.nerdFontsVersion": "3",
   "disableStartupPopups": true,
-  "git.paging.colorArg": "always",
-  "git.paging.pager": "delta --dark --paging=never",
+  "git.diffRenderers.0.colorArg": "always",
+  "git.diffRenderers.0.command": "delta --dark --paging=never",
   "gui.theme.activeBorderColor": ["#ff9e64", "bold"]
-}'
+}' '["git.paging"]'
 
 # The shared instruction file, which both agents read through their own
 # symlink. `mise run refresh-unslop` rewrites everything between the markers,

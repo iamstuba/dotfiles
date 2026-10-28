@@ -5,14 +5,11 @@
 # instead of starting a second one.
 os:
   editPreset: nvim-remote
-
 disableStartupPopups: true
-
 git:
-  paging:
-    colorArg: always
-    pager: delta --dark --paging=never
-
+  diffRenderers:
+    - colorArg: always
+      command: delta --dark --paging=never
 gui:
   # Quoted. A bare 3 parses as an int and lazygit draws boxes instead of icons.
   nerdFontsVersion: "3"

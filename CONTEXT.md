@@ -92,6 +92,10 @@ _Avoid_: assistant, AI, bot, LLM
 `home/.agents/AGENTS.md`, the one file every coding agent on a Mac reads as its global instructions, linked to a different path in each. Half the owner's own rules, half a vendored copy of someone else's writing rules.
 _Avoid_: CLAUDE.md, rules file, system prompt
 
+**Shared settings**:
+`home/.claude/settings.shared.json`, the Claude Code deny list every Mac gets. `setup-claude` adds its entries to the Mac's own `~/.claude/settings.json`, which is never tracked or linked because Claude Code and herdr write into it. The rest of that file belongs to the Mac.
+_Avoid_: settings template, base settings, tracked settings
+
 **Agent multiplexer**:
 The terminal layer that owns the panes coding agents run in and reports whether each is working, idle or blocked. herdr, on a personal Mac only. Does not queue work or restart agents.
 _Avoid_: orchestrator, harness, agent manager
