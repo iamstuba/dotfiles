@@ -33,18 +33,6 @@ render_workspaces() {
   done
 }
 
-render_front_app() {
-  local window title
-  # No focused window, as on an empty workspace, hides the item.
-  if window=$(aerospace list-windows --focused --format '%{app-name}|%{window-title}' 2>/dev/null) \
-    && [[ -n $window ]]; then
-    title=${window#*|}
-    bar_args+=(--set front_app drawing=on label="${window%%|*}${title:+: $title}")
-  else
-    bar_args+=(--set front_app drawing=off)
-  fi
-}
-
 render_mode() { # $1: the mode, empty when AeroSpace is paused
   case $1 in
     main) bar_args+=(--set mode drawing=off) ;;

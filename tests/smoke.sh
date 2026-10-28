@@ -2151,7 +2151,6 @@ echo "aerospace $*" >>"$BAR_LOG"
 case "$1 $2" in
   "subscribe "*) key=subscribe ;;
   "list-windows --all") key=windows ;;
-  "list-windows --focused") key=focused-window ;;
   "list-workspaces --focused") key=focused-workspace ;;
   *) key=other ;;
 esac
@@ -2286,10 +2285,9 @@ want = [("workspace.1", "left", {"update_freq": "10", "script": f"{plugins}/work
                                  "click_script": "aerospace workspace 1", "label.font": app_font}, [])]
 want += [(f"workspace.{n}", "left", {"click_script": f"aerospace workspace {n}", "label.font": app_font}, [])
          for n in range(2, 6)]
-# Both stay hidden until the loop's first event. q is left of the notch.
+# The badge stays hidden until the loop's first mode event.
 want += [
     ("mode", "left", {"drawing": "off"}, []),
-    ("front_app", "q", {"drawing": "off", "label.max_chars": "60", "scroll_texts": "off"}, []),
     ("clock", "right", {"update_freq": "30", "script": f"{plugins}/clock.sh"}, []),
     ("wifi", "right", {"update_freq": "60", "script": f"{plugins}/wifi.sh en7",
                        "click_script": wifi_click}, ["wifi_change", "system_woke"]),
@@ -2302,8 +2300,7 @@ want += [
 ]
 if list(items) != [w[0] for w in want]:
     errs.append(f"items are {list(items)}, expected {[w[0] for w in want]}")
-wiring = ("update_freq", "script", "click_script", "drawing", "label.font", "label.max_chars",
-          "scroll_texts")
+wiring = ("update_freq", "script", "click_script", "drawing", "label.font")
 for name, position, props, events in want:
     item = items.get(name)
     if item is None:
@@ -2468,30 +2465,14 @@ bar_fixture aerospace.subscribe '{"_event":"focus-changed","windowId":6772,"work
 {"_event":"focused-workspace-changed","prevWorkspace":"1","workspace":"3"}'
 bar_fixture aerospace.windows "$bar_windows"
 bar_fixture aerospace.focused-workspace 3
-bar_fixture aerospace.focused-window "Ghostty|it's \$(true); vim"
 bar_run "event loop" plugins/aerospace_events.sh ""
 grep -qx 'aerospace subscribe focus-changed focused-workspace-changed mode-changed' "$bar/log" \
   || fail "bar: the event loop does not subscribe to focus, workspace and mode: $(cat "$bar/log")"
-bar_front="--set front_app drawing=on 'label=Ghostty: it'\"'\"'s \$(true); vim'"
-bar_sb_log_is "sketchybar $bar_pills $bar_front
+bar_sb_log_is "sketchybar $bar_pills
 sketchybar --set mode drawing=on label=SERVICE background.color=$bar_orange
 sketchybar --set mode drawing=on label=PAUSED background.color=$bar_red
 sketchybar --set mode drawing=off
-sketchybar $bar_pills $bar_front"
-bar_reset
-bar_fixture aerospace.subscribe '{"_event":"focused-workspace-changed","prevWorkspace":"3","workspace":"4"}'
-bar_fixture aerospace.windows "$bar_windows"
-bar_fixture aerospace.focused-workspace 3
-bar_fixture aerospace.focused-window '' 1
-bar_run "event loop, nothing focused" plugins/aerospace_events.sh ""
-bar_sb_log_is "sketchybar $bar_pills --set front_app drawing=off"
-bar_reset
-bar_fixture aerospace.subscribe '{"_event":"focus-changed","windowId":6772,"workspace":"3"}'
-bar_fixture aerospace.windows "$bar_windows"
-bar_fixture aerospace.focused-workspace 3
-bar_fixture aerospace.focused-window 'Ghostty|'
-bar_run "event loop, a window with no title" plugins/aerospace_events.sh ""
-bar_sb_log_is "sketchybar $bar_pills --set front_app drawing=on label=Ghostty"
+sketchybar $bar_pills"
 # The bar refusing a command means it has quit, so the loop must not outlive it.
 bar_reset
 bar_fixture aerospace.subscribe '{"_event":"mode-changed","mode":"main"}

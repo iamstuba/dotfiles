@@ -33,14 +33,11 @@ for ws in 1 2 3 4 5; do
       label.drawing=off background.color="$PILL_BG" background.corner_radius=6
       background.height=24 click_script="aerospace workspace $ws")
 done
-# The notch covers center, so the focused window goes at q, left of it.
 sketchybar "${pills[@]}" \
   --set workspace.1 update_freq=10 script="$plugins/workspaces.sh" \
   --add item mode left \
   --set mode drawing=off label.color="$BAR_COLOR" label.padding_left=8 label.padding_right=8 \
-    background.corner_radius=6 background.height=24 \
-  --add item front_app q \
-  --set front_app drawing=off label.max_chars=60 scroll_texts=off
+    background.corner_radius=6 background.height=24
 
 # Right items stack leftwards in the order added, so the clock is at the edge.
 sketchybar \
