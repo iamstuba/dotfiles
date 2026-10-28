@@ -48,12 +48,12 @@ sketchybar \
     click_script="open 'x-apple.systempreferences:com.apple.wifi-settings-extension'" \
   --subscribe wifi wifi_change system_woke \
   --add item battery right \
-  --set battery update_freq=120 script="$plugins/battery.sh" \
+  --set battery update_freq=120 script="$plugins/battery.sh" label.padding_left=3 \
   --subscribe battery power_source_change system_woke \
   --add item memory right \
-  --set memory update_freq=15 script="$plugins/memory.sh" \
+  --set memory update_freq=15 script="$plugins/memory.sh" label.padding_left=3 \
   --add item cpu right \
-  --set cpu update_freq=5 script="$plugins/cpu.sh" \
+  --set cpu update_freq=5 script="$plugins/cpu.sh" label.padding_left=3 \
   --add item watchdog right \
   --set watchdog drawing=off update_freq=10 script="$plugins/watchdog.sh"
 
