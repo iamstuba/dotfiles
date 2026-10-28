@@ -284,7 +284,7 @@ for path, var in (("config/starship.toml", "STARSHIP_JSON"),
             if "name" in rule:
                 errs.append(f"{path} has a [filetype] rule keyed on name; yazi wants url")
 
-for name in ("bootstrap", "setup-git", "refresh-unslop", "check"):
+for name in ("bootstrap", "setup-git", "setup-claude", "refresh-unslop", "check"):
     if name not in root.get("tasks", {}):
         errs.append(f"repo-root task missing: {name}")
 for name in ("update:tools", "update:apps", "update:plugins", "update:dotfiles", "update:all", "setup-agents"):
@@ -1388,8 +1388,8 @@ ok "ssh host stanzas"
 # Tracked config files, through one probe. Each names dotted paths and the value
 # it expects, so a missing path and a changed value fail separately.
 #
-# A numeric segment indexes a list. The Claude hook command sits under two of
-# them, and without indexing that assertion would have to be dropped: a dropped
+# A numeric segment indexes a list. pi's package source sits under one, and
+# without indexing that assertion would have to be dropped: a dropped
 # assertion is how the yazi theme shipped with every glyph missing.
 #
 # The fourth argument names paths that must not resolve at all. Absence is its
@@ -1514,33 +1514,12 @@ sys.exit(1 if errs else 0)
 AGENTS
 ok "shared instruction file"
 
-# Claude Code's settings, which yq parses as YAML unchanged. Read from the file
-# rather than asked of the tool, which every probe here prefers: `claude` has no
-# subcommand that prints the settings it resolved, and a bare `claude config`
-# is taken as a prompt and answered.
-#
-# Three of the eight paths are what an unattended pane depends on: auto mode,
-# the denied credential paths, and five minutes before a long test suite is
-# killed. The hook is the fourth and the one that earns its place. `herdr
-# integration install claude` writes the same entry with this laptop's home path
-# baked in, and the tracked file is a symlink it can reach, so an absolute path
-# here is a bootstrap side effect to remove rather than a state to commit.
-# Asserted whole rather than as a `bash ~/` prefix, since the rest of the line
-# is just as fixed, and with the matcher and timeout beside it: an entry that
-# lost either one binds to nothing or waits forever.
-#
-# The deny list is asserted as one list rather than counted. A count of thirteen
-# passes a file where `~/.ssh/**` became `~/.ssh.bak/**`.
-#
-# Neither `allow` nor `ask` may be there, and neither may arrive empty either.
-# Approvals belong in ~/.claude/settings.local.json, which this repo does not
-# track; an `allow` here would be the client writing into the symlink, and on
-# the work laptop it would be employer paths in a public repo. `ask` is gone by
-# decision: in a pane nobody is watching, a prompt is a stall.
-probe_yaml "claude settings" home/.claude/settings.json '{
-  "model": "opus",
-  "effortLevel": "high",
-  "permissions.defaultMode": "auto",
+# Claude Code's settings are no longer tracked: each Mac keeps its own, and
+# setup-claude merges the shared deny list in. The fragment's list is asserted
+# whole rather than counted, since a count of thirteen passes a file where
+# `~/.ssh/**` became `~/.ssh.bak/**`. Nothing else may sit in the fragment,
+# because the task merges only the deny list and would drop it silently.
+probe_yaml "claude shared settings" home/.claude/settings.shared.json '{
   "permissions.deny": [
     "Read(.env)",
     "Read(.env.*)",
@@ -1555,12 +1534,59 @@ probe_yaml "claude settings" home/.claude/settings.json '{
     "Edit(~/.claude.json)",
     "Read(~/.pi/agent/auth.json)",
     "Edit(~/.pi/agent/auth.json)"
-  ],
-  "env.BASH_DEFAULT_TIMEOUT_MS": "300000",
-  "hooks.SessionStart.0.matcher": "*",
-  "hooks.SessionStart.0.hooks.0.command": "bash ~/.claude/hooks/herdr-agent-state.sh session",
-  "hooks.SessionStart.0.hooks.0.timeout": 10
-}' '["permissions.allow", "permissions.ask"]'
+  ]
+}'
+[ "$(yq -p json -o json -I0 'del(.permissions.deny) | [.. | select(tag != "!!map")] | length' home/.claude/settings.shared.json)" = 0 ] \
+  || fail "home/.claude/settings.shared.json holds more than permissions.deny, which setup-claude never merges"
+
+# setup-claude, run the way mise runs it, in a temp HOME against a claude stub
+# that logs. CLAUDE_HAS names what the stub reports as present already.
+cc=$tmp_home/setup-claude
+mkdir -p "$cc/stubs"
+cat >"$cc/stubs/claude" <<'EOF'
+#!/bin/sh
+case "$*" in
+  "plugin marketplace list --json")
+    case "$CLAUDE_HAS" in *market*) echo '[{"name": "claude-plugins-official"}]' ;; *) echo '[]' ;; esac ;;
+  "plugin list --json")
+    case "$CLAUDE_HAS" in *plugin*) echo '[{"id": "mattpocock-skills@claude-plugins-official"}]' ;; *) echo '[]' ;; esac ;;
+  *) echo "claude $*" >>"$CC_LOG" ;;
+esac
+EOF
+chmod +x "$cc/stubs/claude"
+cc_run=$(yq -p toml -o json mise.toml | yq -r '.tasks."setup-claude".run' | sed "s|{{ config_root }}|$root|g") \
+  || fail "setup-claude has no run text"
+setup_claude() { # $1: what the stub already has
+  : >"$cc/log"
+  HOME=$cc/home PATH=$cc/stubs:$(dirname "$(command -v jq)"):/usr/bin:/bin CC_LOG=$cc/log CLAUDE_HAS=$1 \
+    /bin/sh -c "$cc_run" 2>"$cc/err" || fail "setup-claude exited nonzero: $(cat "$cc/err")"
+}
+cc_deny=$(yq -p json -o json -I0 '.permissions.deny' home/.claude/settings.shared.json)
+
+rm -rf "$cc/home"
+setup_claude ""
+[ "$(yq -p json -o json -I0 '.' "$cc/home/.claude/settings.json")" = "{\"permissions\":{\"deny\":$cc_deny}}" ] \
+  || fail "setup-claude on a fresh Mac wrote: $(cat "$cc/home/.claude/settings.json")"
+[ "$(cat "$cc/log")" = "claude plugin marketplace add anthropics/claude-plugins-official
+claude plugin install mattpocock-skills@claude-plugins-official --scope user" ] \
+  || fail "setup-claude on a fresh Mac ran: $(cat "$cc/log")"
+
+# A Mac's own keys, its own deny entry and its order survive, and a shared
+# entry it already has is not added twice.
+printf '%s\n' '{"model": "opus", "permissions": {"defaultMode": "auto", "deny": ["Read(mine)", "Read(.env)"]}}' \
+  >"$cc/home/.claude/settings.json"
+setup_claude "market plugin"
+cc_got=$(yq -p json -o json -I0 '[.model, .permissions.defaultMode, .permissions.deny[0], .permissions.deny[1], (.permissions.deny | length)]' "$cc/home/.claude/settings.json")
+[ "$cc_got" = "[\"opus\",\"auto\",\"Read(mine)\",\"Read(.env)\",14]" ] \
+  || fail "setup-claude lost or reordered a Mac's own settings: $cc_got"
+[ -s "$cc/log" ] && fail "setup-claude reinstalled what was present: $(cat "$cc/log")"
+
+# A second run changes nothing, so the file is not rewritten under Claude Code.
+cc_before=$(stat -f "%i %m" "$cc/home/.claude/settings.json")
+sleep 1
+setup_claude "market plugin"
+[ "$(stat -f "%i %m" "$cc/home/.claude/settings.json")" = "$cc_before" ] || fail "setup-claude rewrote an unchanged file"
+ok "setup-claude"
 
 # pi's settings. The provider and model are the pair that decides whether a
 # fresh Mac's first `pi` opens on a working model or on a login error, so both

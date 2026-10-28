@@ -78,8 +78,8 @@ adopt = true
 # agents. One shared instruction file, which mise.personal.toml also links
 # into pi so the rules cannot disagree between them. file-level like lazygit
 # above, because herdr's integration refuses a symlinked directory and
-# setup-agents:herdr runs it on a personal Mac. ~/.claude/settings.json is in
-# mise.personal.toml, because the work Mac keeps its own.
+# setup-agents:herdr runs it on a personal Mac. ~/.claude/settings.json is no
+# link: tools write into it, so setup-claude merges the shared keys instead.
 "~/.claude/CLAUDE.md" = "home/.agents/AGENTS.md"
 
 # file-level, so the untracked config.local beside it stays out of the clone.
@@ -196,11 +196,43 @@ run = [
   # Repo-local on purpose: a --global write would land in the tracked git config.
   "git -C {{ config_root }} config filter.pi-settings.clean \"jq 'del(.lastChangelogVersion)'\"",
   "mise run setup-agents",
+  "mise run setup-claude",
 ]
 
 [tasks.setup-git]
 description = "Write the local git identity, profiles and SSH key; flip remotes to SSH."
 run = "{{ config_root }}/bin/setup-git"
+
+[tasks.setup-claude]
+description = "Merge the shared deny list into Claude Code's settings and install mattpocock-skills."
+# Every Mac keeps its own ~/.claude/settings.json, because Claude Code and
+# herdr write into it. The deny list is the one part both Macs must share, so
+# it is added to whatever is there and nothing is removed or reordered. The
+# file is rewritten only on a change, and in place, so its mode survives.
+run = """
+  set -eu
+  settings=$HOME/.claude/settings.json
+  mkdir -p "$HOME/.claude"
+  [ -e "$settings" ] || printf '{}\\n' >"$settings"
+  merged=$(mktemp)
+  jq --slurpfile shared "{{ config_root }}/home/.claude/settings.shared.json" '
+    (.permissions.deny // []) as $have
+    | .permissions.deny = $have + [$shared[0].permissions.deny[] | select(IN($have[]) | not)]
+  ' "$settings" >"$merged"
+  if ! jq -e --slurpfile old "$settings" '. == $old[0]' "$merged" >/dev/null; then
+    cat "$merged" >"$settings"
+  fi
+  rm -f "$merged"
+  # The official marketplace is registered only by the first interactive
+  # session, which a fresh Mac has not had yet.
+  if ! claude plugin marketplace list --json | jq -e 'any(.[]; .name == "claude-plugins-official")' >/dev/null; then
+    claude plugin marketplace add anthropics/claude-plugins-official
+  fi
+  # A plugin disabled by hand stays disabled; only a missing one is installed.
+  if ! claude plugin list --json | jq -e 'any(.[]; .id == "mattpocock-skills@claude-plugins-official")' >/dev/null; then
+    claude plugin install mattpocock-skills@claude-plugins-official --scope user
+  fi
+"""
 
 [tasks.refresh-unslop]
 description = "Refetch the unslop rules into the marked block of home/.agents/AGENTS.md."

@@ -4,10 +4,6 @@
 # not get, because mise has no way to switch off an entry mise.toml declares.
 
 [dotfiles]
-# The work Mac keeps its own untracked copy: tools there write into this
-# file, and a symlink would send those writes into the tracked one.
-"~/.claude/settings.json" = "home/.claude/settings.json"
-
 # The global half of this overlay: herdr's and pi's tools and tasks, and pi's
 # release-age exclude.
 "~/.config/mise/config.personal.toml" = "config/mise/config.personal.toml"
