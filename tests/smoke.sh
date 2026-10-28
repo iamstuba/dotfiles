@@ -2805,9 +2805,9 @@ tools_in() {
 tools_map() {
   # Inventory key, then the commands it installs, which is not the key wherever
   # a backend prefix or a package name differs from the binary: ripgrep installs
-  # rg, github-cli installs gh, npm:typescript installs tsc. A key missing from
-  # this table fails below, so a tool added to [tools] cannot go unasserted by
-  # being forgotten.
+  # rg, github-cli installs gh, gitlab:gitlab-org/cli installs glab. A key
+  # missing from this table fails below, so a tool added to [tools] cannot go
+  # unasserted by being forgotten.
   #
   # Read off a real install rather than guessed: every tool here was installed
   # into a throwaway HOME on 2026-09-13 with mise 2026.9.6 and the binaries
@@ -2843,9 +2843,6 @@ aqua:neovim/neovim nvim
 stylua stylua
 lua-language-server lua-language-server
 marksman marksman
-oxlint oxlint
-oxfmt oxfmt
-npm:typescript tsc
 npm:vscode-langservers-extracted vscode-css-language-server vscode-eslint-language-server vscode-html-language-server vscode-json-language-server vscode-markdown-language-server
 npm:yaml-language-server yaml-language-server
 npm:bash-language-server bash-language-server

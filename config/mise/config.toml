@@ -28,14 +28,13 @@ delta = "latest"
 lazygit = "latest"
 github-cli = "latest" # the installer needs it before the clone exists
 
-# mise owns every language server; mason is out.
+# mise owns every language server; mason is out. TypeScript, Oxlint and oxfmt
+# are not here: each repo pins its own, and a global one on PATH runs instead
+# wherever the command is typed bare.
 "aqua:neovim/neovim" = "latest" # the registry default is a vfox plugin
 stylua = "latest"
 lua-language-server = "latest"
 marksman = "latest"
-oxlint = "latest"
-oxfmt = "latest"
-"npm:typescript" = "latest"
 "npm:vscode-langservers-extracted" = "latest"
 "npm:yaml-language-server" = "latest"
 "npm:bash-language-server" = "latest"
