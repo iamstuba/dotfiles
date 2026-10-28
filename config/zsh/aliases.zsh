@@ -42,8 +42,7 @@ alias gunwip='git rev-list --max-count=1 --format="%s" HEAD | grep -qe "--wip--"
 alias lg='lazygit'
 
 # ----------------------------------------------------------------- listing --
-alias ll='eza --icons --git --long'
-alias l='eza --icons --git --all --long'
+alias ll='eza --icons --git --all --long'  # hidden files too, as ls -al shows them
 
 # ------------------------------------------------------------------- shell --
 alias ..='cd ..'

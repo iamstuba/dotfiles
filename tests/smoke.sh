@@ -1068,9 +1068,10 @@ if command -v zsh >/dev/null 2>&1; then
   # bound. _zsh_highlight is the entry point its README tells integrators to use.
   want functions '^_zsh_highlight$' "zsh-syntax-highlighting did not load"
 
-  for name in gs gss gwip gll lg ll l reload! cleanup lpath; do
+  for name in gs gss gwip gll lg ll reload! cleanup lpath; do
     want alias "^$name=" "alias $name is missing"
   done
+  want alias "^ll=.*--all" "ll no longer lists hidden files"
   want alias 'grep -qe "--wip--"' "gunwip still passes its pattern as an option"
   # Counted from the file, not from memory: the number moves every time
   # an alias is added.
