@@ -8,9 +8,13 @@
 # file, and a symlink would send those writes into the tracked one.
 "~/.claude/settings.json" = "home/.claude/settings.json"
 
-# The global half of this overlay: pi's tool, its release-age exclude and its
-# tasks.
+# The global half of this overlay: herdr's and pi's tools and tasks, and pi's
+# release-age exclude.
 "~/.config/mise/config.personal.toml" = "config/mise/config.personal.toml"
+
+# herdr. file-level, because its config directory also holds the socket, the logs,
+# session.json and the installed plugins.
+"~/.config/herdr/config.toml" = "config/herdr/config.toml"
 
 # pi. file-level, because herdr's integration refuses a symlinked directory.
 # AGENTS.md is the shared instruction file, which mise.toml links into Claude

@@ -67,8 +67,8 @@ mise run update:all
 ```
 
 Runs, in order: `update:dotfiles` (fast-forward this repo when on main), `update:tools`
-(mise, every tool, pi extensions on a personal Mac), `update:apps` (formulae and
-casks), `update:plugins` (Neovim). Run `mise upgrade --dry-run`, `mise bootstrap packages upgrade --dry-run`
+(mise and every tool, and on a personal Mac pi's extensions and a list of
+outdated herdr integrations), `update:apps` (formulae and casks), `update:plugins` (Neovim). Run `mise upgrade --dry-run`, `mise bootstrap packages upgrade --dry-run`
 and `bin/brew-tap-packages upgrade --dry-run` first on a new machine. The third
 covers what the second cannot see; see "Rerunning" below. Run the second from
 the repo or with `mise -C <repo>`. Anywhere else mise finds no

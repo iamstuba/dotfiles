@@ -78,13 +78,9 @@ adopt = true
 # agents. One shared instruction file, which mise.personal.toml also links
 # into pi so the rules cannot disagree between them. file-level like lazygit
 # above, because herdr's integration refuses a symlinked directory and
-# setup-agents runs it. ~/.claude/settings.json is in mise.personal.toml,
-# because the work Mac keeps its own.
+# setup-agents:herdr runs it on a personal Mac. ~/.claude/settings.json is in
+# mise.personal.toml, because the work Mac keeps its own.
 "~/.claude/CLAUDE.md" = "home/.agents/AGENTS.md"
-
-# herdr. file-level: its config directory also holds the socket, the logs,
-# session.json and the installed plugins.
-"~/.config/herdr/config.toml" = "config/herdr/config.toml"
 
 # file-level, so the untracked config.local beside it stays out of the clone.
 "~/.config/ghostty/config.ghostty" = "config/ghostty/config.ghostty"

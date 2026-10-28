@@ -1,21 +1,46 @@
 # Personal overlay of the global half, symlinked beside config.toml by
 # mise.personal.toml and read only when MISE_ENV includes "personal". It holds
-# pi, which a work Mac does not get.
+# herdr and pi, which a work Mac does not get.
 
 [settings]
 minimum_release_age_excludes = ["pi"]  # appends to config.toml's list
 
 [tools]
+herdr = "latest"
 pi = "latest"      # must stay on aqua:, never npm:
+
+[tasks."setup-agents:herdr"]
+description = "Install herdr's Claude Code integration and the Plannotator plugin."
+# herdr refuses a symlinked directory, so ~/.claude stays real. Every line is
+# safe to rerun. Not every line is free. The plugin install refetches its
+# binary through a build hook on each run.
+run = """
+  mkdir -p ~/.claude
+  herdr integration install claude
+  # Pinned to a commit, not a tag. The one published tag, rust-lite-v0.1.0, runs
+  # all four actions through bun, which is in no part of this manifest and on
+  # neither Mac, so pinning there would bind four keys to commands that fail on
+  # every press. This SHA is main at plugin version 0.4.0, which fetches its own
+  # binary through a build hook. Only a hand edit moves the pin.
+  # The flags follow the repo, not the subcommand. herdr 0.9.0 folds anything
+  # before the positional into the owner and exits 2.
+  herdr plugin install plannotator/herdr-annotate/lite -y --ref 7c8f5a177b8285dc56efc471ef04f7ab44a2b4b6
+"""
 
 [tasks."setup-agents:pi"]
 description = "Install herdr's pi integration and pi's skills package."
-# herdr refuses a symlinked directory, so ~/.pi stays real.
+# herdr refuses a symlinked directory, so ~/.pi stays real. depends_post may
+# run both halves at once, and this one needs herdr's.
+depends = ["setup-agents:herdr"]
 run = """
   mkdir -p ~/.pi/agent
   herdr integration install pi
   pi install git:github.com/mattpocock/skills@v1.2.3
 """
+
+[tasks."update:herdr"]
+description = "Report herdr integrations that are out of date."
+run = "herdr integration status --outdated-only"
 
 [tasks."update:pi"]
 description = "Update pi's extensions."
@@ -24,7 +49,7 @@ run = "pi update --extensions"
 # No run or description here: either would replace config.toml's task instead
 # of adding to it.
 [tasks.setup-agents]
-depends_post = ["setup-agents:pi"]
+depends_post = ["setup-agents:herdr", "setup-agents:pi"]
 
 [tasks."update:tools"]
-depends_post = ["update:pi"]
+depends_post = ["update:herdr", "update:pi"]

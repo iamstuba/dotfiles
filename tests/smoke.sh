@@ -145,10 +145,11 @@ for target in personal.get("dotfiles", {}):
     if target in root.get("dotfiles", {}):
         errs.append(f"{target} is in both mise.toml and mise.personal.toml, so work gets it too")
 if "~/.config/mise/config.personal.toml" not in personal.get("dotfiles", {}):
-    errs.append("mise.personal.toml no longer links config.personal.toml, so a personal Mac loses pi")
+    errs.append("mise.personal.toml no longer links config.personal.toml, so a personal Mac loses pi and herdr")
 
-# pi is personal-only. Anything of pi's in either half of the manifest reaches
-# the work Mac, because mise cannot switch off what a loaded file declares.
+# pi and herdr are personal-only. Anything of theirs in either half of the
+# manifest reaches the work Mac, because mise cannot switch off what a loaded
+# file declares.
 def strings(x):
     if isinstance(x, str):
         yield x
@@ -159,22 +160,37 @@ def strings(x):
         for v in x:
             yield from strings(v)
 
-pi_cmd = re.compile(r"(?:^|[\s;&|(`])pi(?:\s|$)|~/\.pi\b")
+# Each tool's registry names, the directory its links live under, and a task
+# line that runs it or names that directory.
+personal_only = {
+    "pi": (("pi", "pi-coding-agent"), "~/.pi",
+           re.compile(r"(?:^|[\s;&|(`])pi(?:\s|$)|~/\.pi\b")),
+    "herdr": (("herdr",), "~/.config/herdr",
+              re.compile(r"(?:^|[\s;&|(`])herdr(?:\s|$)|~/\.config/herdr\b")),
+}
 for name, cfg in (("config/mise/config.toml", global_cfg), ("mise.toml", root)):
-    for key in cfg.get("tools", {}):
-        if re.split(r"[:/]", key)[-1] in ("pi", "pi-coding-agent"):
-            errs.append(f"{name} declares {key}; pi is in config.personal.toml")
+    for tool, (keys, link_dir, cmd) in personal_only.items():
+        for key in cfg.get("tools", {}):
+            if re.split(r"[:/]", key)[-1] in keys:
+                errs.append(f"{name} declares {key}; {tool} is in config.personal.toml")
+        for target in cfg.get("dotfiles", {}):
+            if target == link_dir or target.startswith(link_dir + "/"):
+                errs.append(f"{name} links {target}; {tool}'s links are in mise.personal.toml")
+        for text in strings([cfg.get("tasks", {}), cfg.get("bootstrap", {}).get("hooks", {})]):
+            for line in text.splitlines():
+                if cmd.search(line):
+                    errs.append(f"{name} runs {tool}: {line.strip()!r}")
     if "pi" in cfg.get("settings", {}).get("minimum_release_age_excludes", []):
         errs.append(f"{name} excludes pi from the release age; config.personal.toml does")
-    for target in cfg.get("dotfiles", {}):
-        if target == "~/.pi" or target.startswith("~/.pi/"):
-            errs.append(f"{name} links {target}; pi's links are in mise.personal.toml")
-    for text in strings([cfg.get("tasks", {}), cfg.get("bootstrap", {}).get("hooks", {})]):
-        for line in text.splitlines():
-            if pi_cmd.search(line):
-                errs.append(f"{name} runs pi: {line.strip()!r}")
+if "herdr" not in global_personal.get("tools", {}):
+    errs.append("config.personal.toml does not declare herdr, so a personal Mac loses it")
+if "~/.config/herdr/config.toml" not in personal.get("dotfiles", {}):
+    errs.append("mise.personal.toml does not link ~/.config/herdr/config.toml, so a personal Mac loses herdr's config")
+pi_setup = global_personal.get("tasks", {}).get("setup-agents:pi", {})
+if "setup-agents:herdr" not in pi_setup.get("depends", []):
+    errs.append("setup-agents:pi does not depend on setup-agents:herdr, so `herdr integration install pi` can run before herdr is set up")
 
-# The global personal overlay holds pi's tool, its exclude and its tasks. A
+# The global personal overlay holds pi's and herdr's tools and tasks. A
 # block named after a config.toml task may carry depends_post and nothing
 # else: run or description there replaces the task instead of adding to it.
 if set(global_personal) - {"tools", "settings", "tasks"}:
@@ -1718,6 +1734,18 @@ else
   printf 'skip pi blocked bridge names: pi is not on PATH\n'
 fi
 
+# An overlay's tools exist only where the overlay loads. MISE_ENV is the
+# documented switch, and miserc.toml is what install.sh actually writes;
+# that file sets MISE_ENV for mise itself and is invisible as a variable
+# here, so both are consulted.
+env_loads() {
+  case "${MISE_ENV:-}" in *"$1"*) return 0 ;; esac
+  grep -qs "^env *=.*\"$1\"" "${XDG_CONFIG_HOME:-$HOME/.config}/mise/miserc.toml"
+}
+# herdr is personal-only. An earlier install can leave a mise shim on PATH
+# that fails on every call, so the checks below ask whether herdr runs.
+herdr_runs() { herdr --version >/dev/null 2>&1; }
+
 # herdr's own pi extension is the listener on the other end. It is
 # herdr-managed and untracked, so the only honest source for the channel name
 # is what `herdr integration install pi` writes. Into $tmp_home, which the trap
@@ -1725,7 +1753,7 @@ fi
 # A Mac without pi never runs that install, so it has nothing to check.
 if ! command -v pi >/dev/null 2>&1; then
   printf 'skip herdr blocked listener: pi is not on PATH\n'
-elif command -v herdr >/dev/null 2>&1; then
+elif herdr_runs; then
   herdr_pi=$tmp_home/herdr-pi
   mkdir -p "$herdr_pi/.pi/agent/extensions"
   if HOME=$herdr_pi herdr integration install pi >/dev/null 2>&1; then
@@ -1736,14 +1764,14 @@ elif command -v herdr >/dev/null 2>&1; then
     printf 'skip herdr blocked listener: herdr integration install pi failed here\n'
   fi
 else
-  printf 'skip herdr blocked listener: herdr is not on PATH\n'
+  printf 'skip herdr blocked listener: herdr does not run here\n'
 fi
 
 # herdr's config, validated by herdr rather than by this script. `config check`
 # has no path argument and reads $XDG_CONFIG_HOME/herdr/config.toml, so the
 # tracked file is reached through a temp XDG root holding a symlink to it.
 # Inside $tmp_home, so the trap above already cleans it up.
-if command -v herdr >/dev/null 2>&1; then
+if herdr_runs; then
   herdr_xdg=$tmp_home/herdr-xdg
   mkdir -p "$herdr_xdg/herdr"
   ln -sf "$root/config/herdr/config.toml" "$herdr_xdg/herdr/config.toml"
@@ -1755,7 +1783,9 @@ if command -v herdr >/dev/null 2>&1; then
   fi
   ok "herdr config check"
 else
-  printf 'skip herdr config check: herdr is not on PATH\n'
+  # A personal Mac declares herdr, so there it is a failure, not a skip.
+  if env_loads personal; then fail "herdr is declared on this Mac but does not run"; fi
+  printf 'skip herdr config check: herdr does not run here\n'
 fi
 
 # The four Plannotator keys, by command name. `config check` passes a file whose
@@ -2857,14 +2887,6 @@ ok "tools inventory ($(printf '%s\n' "$all_keys" | wc -l | tr -d ' ') tools)"
 # Resolution. Skipped whole when mise is absent, because without mise nothing
 # in [tools] can be installed and every assertion below would be noise.
 if command -v mise >/dev/null 2>&1; then
-  # An overlay's tools exist only where the overlay loads. MISE_ENV is the
-  # documented switch, and miserc.toml is what install.sh actually writes;
-  # that file sets MISE_ENV for mise itself and is invisible as a variable
-  # here, so both are consulted.
-  env_loads() {
-    case "${MISE_ENV:-}" in *"$1"*) return 0 ;; esac
-    grep -qs "^env *=.*\"$1\"" "${XDG_CONFIG_HOME:-$HOME/.config}/mise/miserc.toml"
-  }
   check_keys=$tools_keys
   if env_loads work && [ -n "$work_keys" ]; then
     check_keys="$check_keys

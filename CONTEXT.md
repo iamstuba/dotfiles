@@ -85,7 +85,7 @@ The full-screen client for reading a diff or a pull request. tuicr. Owns no git 
 _Avoid_: TUI, diff viewer, code review tool
 
 **Coding agent**:
-An agent the repo installs and configures: Claude Code on every Mac, pi on a personal Mac only. herdr owns their panes but is not one of them.
+An agent the repo installs and configures: Claude Code on every Mac, pi on a personal Mac only. herdr owns their panes on a personal Mac but is not one of them.
 _Avoid_: assistant, AI, bot, LLM
 
 **Shared instruction file**:
@@ -93,7 +93,7 @@ _Avoid_: assistant, AI, bot, LLM
 _Avoid_: CLAUDE.md, rules file, system prompt
 
 **Agent multiplexer**:
-The terminal layer that owns the panes coding agents run in and reports whether each is working, idle or blocked. herdr. Does not queue work or restart agents.
+The terminal layer that owns the panes coding agents run in and reports whether each is working, idle or blocked. herdr, on a personal Mac only. Does not queue work or restart agents.
 _Avoid_: orchestrator, harness, agent manager
 
 **Bar**:
