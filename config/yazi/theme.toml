@@ -1,4 +1,5 @@
-# From folke/tokyonight.nvim, extras/yazi/tokyonight_night.toml.
+# From folke/tokyonight.nvim, extras/yazi/tokyonight_night.toml, with the four
+# [filetype] fallback rules keyed on url instead of name, which yazi 26 rejects.
 [mgr]
 # NOTE: can be combined with tmTheme (sublime colorshceme file) for preview code highlight
 # syntect_theme = "path/to/tmTheme"
@@ -151,11 +152,11 @@ rules = [
 	# { mime = "inode/x-empty", fg = "#f7768e" },
 
 	# Special files
-	{ name = "*", is = "orphan", bg = "#f7768e" },
-	{ name = "*", is = "exec"  , fg = "#9ece6a" },
+	{ url = "*", is = "orphan", bg = "#f7768e" },
+	{ url = "*", is = "exec"  , fg = "#9ece6a" },
 
 	# Fallback
-	{ name = "*/", fg = "#7aa2f7" },
-	{ name = "*", fg = "#c0caf5" }
+	{ url = "*/", fg = "#7aa2f7" },
+	{ url = "*", fg = "#c0caf5" }
 ]
     

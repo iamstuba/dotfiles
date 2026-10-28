@@ -278,6 +278,11 @@ for path, var in (("config/starship.toml", "STARSHIP_JSON"),
         glyphs = sum(1 for c in p.read_text() if 0xE000 <= ord(c) <= 0xF8FF)
         if glyphs < 8:
             errs.append(f"{path} carries {glyphs} private-use glyphs, expected at least 8")
+        # yazi 26 refuses the whole file over one rule keyed on name, and
+        # upstream's copy still has four of them.
+        for rule in cfg.get("filetype", {}).get("rules", []):
+            if "name" in rule:
+                errs.append(f"{path} has a [filetype] rule keyed on name; yazi wants url")
 
 for name in ("bootstrap", "setup-git", "refresh-unslop", "check"):
     if name not in root.get("tasks", {}):
