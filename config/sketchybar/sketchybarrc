@@ -59,20 +59,30 @@ sketchybar \
 
 # Added last, so they sit nearest the notch. The single quotes leave $NAME
 # for SketchyBar to expand at the click. review.sh fills the rows and gives
-# each its URL.
+# each its URL. A row lights up under the pointer. Its drawing=off comes after
+# the colour, since setting a colour turns the background on. The popup grows
+# leftwards, since the chips sit near the right edge. SketchyBar has no event
+# for a click elsewhere, so the popup closes when the pointer leaves the chip
+# and the popup. A fast pointer can slip past that, so it also closes when
+# the event loop reports that another window took focus.
+sketchybar --add event aerospace_focus_change
 for forge in gitlab github; do
   chip=review.$forge
   review=(--add item "$chip" right
     --set "$chip" drawing=off update_freq=120 script="$plugins/review.sh $forge"
       click_script='sketchybar --set $NAME popup.drawing=toggle'
-      label.padding_left=3 background.color="$ITEM_BG" background.corner_radius=6
-      background.height=24 popup.background.color="$POPUP_BG"
+      icon.padding_left=10 label.padding_left=5 label.padding_right=10
+      background.color="$ITEM_BG" background.corner_radius=6 background.height=24
+      popup.align=right popup.background.color="$POPUP_BG"
       popup.background.border_color="$HAIRLINE" popup.background.border_width=1
       popup.background.corner_radius=6
-    --subscribe "$chip" system_woke)
+    --subscribe "$chip" system_woke mouse.exited.global aerospace_focus_change)
   for n in {1..10}; do
     review+=(--add item "$chip.row.$n" "popup.$chip"
-      --set "$chip.row.$n" drawing=off icon.drawing=off)
+      --set "$chip.row.$n" drawing=off icon.drawing=off label.padding_left=8 label.padding_right=8
+        background.color="$PILL_BG" background.corner_radius=4 background.height=24
+        background.drawing=off script="$plugins/hover.sh"
+      --subscribe "$chip.row.$n" mouse.entered mouse.exited)
   done
   sketchybar "${review[@]}"
 done

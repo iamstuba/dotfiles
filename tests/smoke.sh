@@ -2233,11 +2233,15 @@ bar_fixture() { # $1: command, $2: what it prints, $3: its exit code
   echo "${3:-0}" >"$bar/fix/$1.exit"
 }
 bar_run() { # $1: case, $2: script under config/sketchybar, $3: NAME, then its arguments
-  # BAR_SB_EXIT, when set, is the exit code of every sketchybar call.
-  bar_case=$1 bar_script=$2 bar_name=$3
+  # BAR_SB_EXIT, when set, is the exit code of every sketchybar call, and
+  # BAR_SENDER the event SketchyBar names.
+  bar_case=$1 bar_script=$2 bar_name=$3 bar_sender=${BAR_SENDER:-routine} bar_sb_exit=${BAR_SB_EXIT:-0}
   shift 3
+  # sh keeps an assignment made before a function call, so these would
+  # otherwise reach every later case.
+  unset BAR_SENDER BAR_SB_EXIT
   env -i HOME="$bar" PATH="$bar/stubs:/usr/bin:/bin" CONFIG_DIR="$root/$bar_dir" TMPDIR="$bar/tmp/" \
-    NAME="$bar_name" SENDER=routine BAR_LOG="$bar/log" BAR_FIX="$bar/fix" BAR_SB_EXIT="${BAR_SB_EXIT:-0}" \
+    NAME="$bar_name" SENDER="$bar_sender" BAR_LOG="$bar/log" BAR_FIX="$bar/fix" BAR_SB_EXIT="$bar_sb_exit" \
     "$root/$bar_dir/$bar_script" "$@" 2>"$bar/err" || fail "bar: $bar_case exited nonzero"
   if [ -s "$bar/err" ]; then fail "bar: $bar_case wrote to stderr: $(cat "$bar/err")"; fi
 }
@@ -2301,7 +2305,7 @@ def pairs(args):
         out[k] = v
     return out
 
-bar, defaults, items, flags = {}, {}, {}, []
+bar, defaults, items, flags, custom = {}, {}, {}, [], []
 for line in lines:
     if not line.startswith("sketchybar "):
         continue
@@ -2317,13 +2321,20 @@ for line in lines:
             bar.update(pairs(args))
         elif flag == "--default":
             defaults.update(pairs(args))
+        elif flag == "--add" and len(args) == 2 and args[0] == "event":
+            custom.append(args[1])
         elif flag == "--add" and len(args) == 3 and args[0] == "item":
             items[args[1]] = {"position": args[2], "props": {}, "events": []}
         elif flag in ("--set", "--subscribe") and args and args[0] in items:
             if flag == "--set":
                 items[args[0]]["props"].update(pairs(args[1:]))
+                items[args[0]]["sets"] = items[args[0]].get("sets", []) + args[1:]
             else:
                 items[args[0]]["events"] += args[1:]
+                # SketchyBar refuses a subscription to a custom event it has not been told about.
+                for e in args[1:]:
+                    if e.startswith("aerospace_") and e not in custom:
+                        errs.append(f"{args[0]} subscribes to {e} before sketchybarrc adds it")
         elif flag != "--update" or args:
             errs.append(f"unexpected {flag} {args}")
 if not flags or flags[-1] != "--update":
@@ -2363,13 +2374,21 @@ want += [
                            "drawing": "off"}, []),
 ]
 # Added last, so they sit nearest the notch. The chips stay hidden until their
-# first fetch, and each popup's ten rows until a fetch fills them.
+# first fetch, and each popup's ten rows until a fetch fills them. SketchyBar
+# has no event for a click elsewhere, so a popup closes when the pointer
+# leaves it, or when the event loop says another window took focus.
 for forge in ("gitlab", "github"):
     chip = f"review.{forge}"
     want.append((chip, "right", {"update_freq": "120", "script": f"{plugins}/review.sh {forge}",
                                  "click_script": "sketchybar --set $NAME popup.drawing=toggle",
-                                 "drawing": "off"}, ["system_woke"]))
-    want += [(f"{chip}.row.{n}", f"popup.{chip}", {"drawing": "off"}, []) for n in range(1, 11)]
+                                 "drawing": "off"},
+                 ["system_woke", "mouse.exited.global", "aerospace_focus_change"]))
+    want += [(f"{chip}.row.{n}", f"popup.{chip}", {"drawing": "off", "script": f"{plugins}/hover.sh"},
+              ["mouse.entered", "mouse.exited"]) for n in range(1, 11)]
+# The event loop triggers this on a focus change, and the review chips close
+# their popups on it.
+if custom != ["aerospace_focus_change"]:
+    errs.append(f"custom events are {custom}, expected ['aerospace_focus_change']")
 if list(items) != [w[0] for w in want]:
     errs.append(f"items are {list(items)}, expected {[w[0] for w in want]}")
 wiring = ("update_freq", "script", "click_script", "drawing", "label.font")
@@ -2384,6 +2403,14 @@ for name, position, props, events in want:
         errs.append(f"{name} is wired {got}, expected {props}")
     if item["events"] != events:
         errs.append(f"{name} subscribes to {item['events']}, expected {events}")
+    # Setting a background colour turns the background on, so a row's
+    # drawing=off must come after its colour or every row starts lit.
+    if ".row." in name:
+        sets = [a.split("=", 1)[0] for a in item.get("sets", [])]
+        if "background.drawing" not in sets or "background.color" not in sets \
+                or max(i for i, k in enumerate(sets) if k == "background.drawing") \
+                < max(i for i, k in enumerate(sets) if k == "background.color"):
+            errs.append(f"{name} sets its background colour after background.drawing=off, so it starts lit")
     script = item["props"].get("script", "").split(" ")[0]
     if script and not os.access(script, os.X_OK):
         errs.append(f"{name}'s script {script} is not an executable file")
@@ -2548,11 +2575,6 @@ chmod +x "$bar_shims"/*
 # The stub sketchybar's log line for these arguments.
 bar_line() { python3 -c 'import shlex, sys; print(shlex.join(sys.argv[1:]))' sketchybar "$@"; }
 
-bar_reset
-bar_fixture gh.auth 'You are not logged into any GitHub hosts.' 1
-bar_run "github chip, no login" plugins/review.sh review.github github
-bar_log_is "gh auth status
-$(bar_line --set review.github drawing=off popup.drawing=off)"
 
 bar_gh_query='gh api -X GET search/issues -f q=is:pr is:open draft:false archived:false review-requested:@me -f per_page=10'
 bar_gh_items() { # $1: how many rows, numbered from 1
@@ -2564,46 +2586,53 @@ print(",".join(json.dumps({"repository_url": "https://api.github.com/repos/acme/
 EOF
 }
 # The stub's log line for a chip showing $3 with $4 rows. Row n reads
-# "$5n  Fix bug n" and opens "$6n".
-bar_review_line() { # $1: forge, $2: icon, $3: count, $4: rows shown, $5: label prefix, $6: URL prefix
+# "$5n  Fix bug n" and opens "$6n". Every row is $7 wide, the longest row's
+# width, so its highlight and click span the popup.
+bar_review_line() { # $1: forge, $2: icon, $3: count, $4: rows shown, $5: label prefix, $6: URL prefix, $7: row width
   python3 - "$@" <<'EOF'
 import shlex, sys
-forge, icon, count, shown, label, url = sys.argv[1:]
+forge, icon, count, shown, label, url, width = sys.argv[1:]
 chip = f"review.{forge}"
 args = ["sketchybar", "--set", chip, "drawing=on", f"icon={icon}", f"label={count}"]
 for n in range(1, 11):
     if n <= int(shown):
         args += ["--set", f"{chip}.row.{n}", "drawing=on", f"label={label}{n}  Fix bug {n}",
-                 f"click_script=open '{url}{n}'; sketchybar --set {chip} popup.drawing=off"]
+                 f"width={width}", f"click_script=open '{url}{n}'; sketchybar --set {chip} popup.drawing=off "
+                 f"--set {chip}.row.{n} background.drawing=off"]
     else:
         args += ["--set", f"{chip}.row.{n}", "drawing=off"]
 print(shlex.join(args))
 EOF
 }
+# Monaspace Neon at 13 points, measured in a live popup, draws a row 16 + 8.05
+# points a character wide. Ten rows' longest label is "acme/web#10  Fix bug
+# 10", 23 characters, so 202. Three rows' is 21 characters, so 186.
 # The search returns at most ten rows but the whole count.
 bar_reset
 bar_fixture gh.api "{\"total_count\": 14, \"items\": [$(bar_gh_items 10)]}"
 bar_run "github chip, 14 requests" plugins/review.sh review.github github
-bar_log_is "gh auth status
-$bar_gh_query
-$(bar_review_line github '<U+F09B>' 14 10 acme/web# https://github.com/acme/web/pull/)"
+bar_log_is "$bar_gh_query
+$(bar_review_line github '<U+F09B>' 14 10 acme/web# https://github.com/acme/web/pull/ 202)"
 bar_reset
 bar_fixture gh.api "{\"total_count\": 3, \"items\": [$(bar_gh_items 3)]}"
 bar_run "github chip, 3 requests" plugins/review.sh review.github github
-bar_log_is "gh auth status
-$bar_gh_query
-$(bar_review_line github '<U+F09B>' 3 3 acme/web# https://github.com/acme/web/pull/)"
+bar_log_is "$bar_gh_query
+$(bar_review_line github '<U+F09B>' 3 3 acme/web# https://github.com/acme/web/pull/ 186)"
 bar_reset
 bar_fixture gh.api '{"total_count": 0, "items": []}'
 bar_run "github chip, none" plugins/review.sh review.github github
-bar_log_is "gh auth status
-$bar_gh_query
+bar_log_is "$bar_gh_query
+$(bar_line --set review.github drawing=off popup.drawing=off)"
+# Without a login gh exits 4 before any request, measured with gh 2.103.0.
+bar_reset
+bar_fixture gh.api '' 4
+bar_run "github chip, no login" plugins/review.sh review.github github
+bar_log_is "$bar_gh_query
 $(bar_line --set review.github drawing=off popup.drawing=off)"
 bar_reset
 bar_fixture gh.api '{"message": "Bad credentials"}' 1
 bar_run "github chip, api failing" plugins/review.sh review.github github
-bar_log_is "gh auth status
-$bar_gh_query
+bar_log_is "$bar_gh_query
 $(bar_line --set review.github drawing=off popup.drawing=off)"
 
 # Forge text comes from strangers. A hostile title must reach the label as
@@ -2617,7 +2646,7 @@ argv = shlex.split(open(os.environ["BAR_LOG"]).read().splitlines()[-1])
 row = argv[argv.index(f"{chip}.row.1") + 1:argv.index(f"{chip}.row.2") - 1]
 if row[:2] != ["drawing=on", want]:
     sys.exit(f"  row 1 is {row}, expected {want!r}")
-print(row[2].removeprefix("click_script="))
+print(next(a for a in row if a.startswith("click_script=")).removeprefix("click_script="))
 EOF
   ) || fail "bar: $bar_case: $(cat "$bar/log")"
   : >"$bar/log"
@@ -2626,7 +2655,7 @@ EOF
   [ ! -e "$bar/tmp/pwned" ] || fail "bar: $bar_case: the row's click ran the URL as shell"
   bar_case="$bar_case, the row's click"
   bar_log_is "open $3
-$(bar_line --set "$1" popup.drawing=off)"
+$(bar_line --set "$1" popup.drawing=off --set "$1.row.1" background.drawing=off)"
 }
 bar_hostile_title='it'"'"'s $(touch pwned); touch pwned\tnow'
 bar_hostile_label="it's \$(touch pwned); touch pwned now"
@@ -2635,6 +2664,26 @@ bar_fixture gh.api '{"total_count": 1, "items": [{"repository_url": "https://api
   "number": 7, "title": "'"$bar_hostile_title"'", "html_url": "https://github.com/acme/web/pull/7?q='"'"';touch pwned;'"'"'"}]}'
 bar_run "github chip, hostile title" plugins/review.sh review.github github
 bar_hostile_is review.github "acme/web#7  $bar_hostile_label" "https://github.com/acme/web/pull/7?q=';touch pwned;'"
+
+# The pointer leaving a chip and its popup only closes the popup. A fetch
+# here would cost a request on every pass of the mouse.
+bar_reset
+BAR_SENDER=mouse.exited.global bar_run "gitlab chip, pointer gone" plugins/review.sh review.gitlab gitlab
+bar_log_is "$(bar_line --set review.gitlab popup.drawing=off)"
+
+# A popup row lights up under the pointer.
+bar_reset
+BAR_SENDER=mouse.entered bar_run "row hover" plugins/hover.sh review.gitlab.row.2
+bar_log_is "$(bar_line --set review.gitlab.row.2 background.drawing=on)"
+bar_reset
+BAR_SENDER=mouse.exited bar_run "row hover gone" plugins/hover.sh review.gitlab.row.2
+bar_log_is "$(bar_line --set review.gitlab.row.2 background.drawing=off)"
+
+# A click in another window moves AeroSpace's focus, and the event loop
+# passes that on. The popup closes without a fetch.
+bar_reset
+BAR_SENDER=aerospace_focus_change bar_run "github chip, focus moved" plugins/review.sh review.github github
+bar_log_is "$(bar_line --set review.github popup.drawing=off)"
 
 # A personal Mac has no glab at all.
 bar_reset
@@ -2648,6 +2697,8 @@ bar_run "gitlab chip, no login" plugins/review.sh review.gitlab gitlab
 bar_log_is "glab config get user --host gitlab.com
 $(bar_line --set review.gitlab drawing=off popup.drawing=off)"
 
+# The GitLab rows' longest labels are 32 characters for ten, so 274, and 30
+# for three, so 258.
 bar_gl_query='glab api --hostname gitlab.com graphql -f query={ currentUser { reviewRequestedMergeRequests(state: opened, draft: false, reviewStates: [UNREVIEWED, REVIEW_STARTED, UNAPPROVED], first: 10, sort: UPDATED_DESC) { count nodes { iid title webUrl project { fullPath } } } } }'
 bar_gl_json() { # $1: the count, $2: how many rows, numbered from 1
   python3 - "$1" "$2" <<'EOF'
@@ -2665,7 +2716,7 @@ bar_fixture glab.api "$(bar_gl_json 14 10)"
 bar_run "gitlab chip, 14 requests" plugins/review.sh review.gitlab gitlab
 bar_log_is "glab config get user --host gitlab.com
 $bar_gl_query
-$(bar_review_line gitlab '<U+F296>' 14 10 'acme/platform/api!' https://gitlab.com/acme/platform/api/-/merge_requests/)"
+$(bar_review_line gitlab '<U+F296>' 14 10 'acme/platform/api!' https://gitlab.com/acme/platform/api/-/merge_requests/ 274)"
 # Unset, a glab that runs before any login writes a second config under
 # Application Support, sends telemetry, checks for updates or follows a stray
 # host.
@@ -2678,7 +2729,7 @@ bar_fixture glab.api "$(bar_gl_json 3 3)"
 bar_run "gitlab chip, 3 requests" plugins/review.sh review.gitlab gitlab
 bar_log_is "glab config get user --host gitlab.com
 $bar_gl_query
-$(bar_review_line gitlab '<U+F296>' 3 3 'acme/platform/api!' https://gitlab.com/acme/platform/api/-/merge_requests/)"
+$(bar_review_line gitlab '<U+F296>' 3 3 'acme/platform/api!' https://gitlab.com/acme/platform/api/-/merge_requests/ 258)"
 bar_reset
 bar_fixture glab.config someone
 bar_fixture glab.api "$(bar_gl_json 0 0)"
@@ -2726,11 +2777,11 @@ bar_fixture aerospace.focused-workspace 3
 bar_run "event loop" plugins/aerospace_events.sh ""
 grep -qx 'aerospace subscribe focus-changed focused-workspace-changed mode-changed' "$bar/log" \
   || fail "bar: the event loop does not subscribe to focus, workspace and mode: $(cat "$bar/log")"
-bar_sb_log_is "sketchybar $bar_pills
+bar_sb_log_is "sketchybar $bar_pills --trigger aerospace_focus_change
 sketchybar --set mode drawing=on label=SERVICE background.color=$bar_orange
 sketchybar --set mode drawing=on label=PAUSED background.color=$bar_red
 sketchybar --set mode drawing=off
-sketchybar $bar_pills"
+sketchybar $bar_pills --trigger aerospace_focus_change"
 # The bar refusing a command means it has quit, so the loop must not outlive it.
 bar_reset
 bar_fixture aerospace.subscribe '{"_event":"mode-changed","mode":"main"}

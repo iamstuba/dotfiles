@@ -8,9 +8,16 @@ export PATH=$HOME/.local/share/mise/shims:$PATH
 
 hide() { sketchybar --set "$NAME" drawing=off popup.drawing=off; }
 
+# The pointer has left the chip and its popup, or another window took focus.
+# A fetch here would cost a request on every pass of the mouse.
+if [[ ${SENDER:-} == mouse.exited.global || ${SENDER:-} == aerospace_focus_change ]]; then
+  sketchybar --set "$NAME" popup.drawing=off
+  exit 0
+fi
+
 fetch_github() {
-  gh auth status >/dev/null 2>&1 || return 1
   local json
+  # Without a login gh exits 4 before any request, so no separate check.
   json=$(gh api -X GET search/issues \
     -f q='is:pr is:open draft:false archived:false review-requested:@me' -f per_page=10 2>/dev/null) \
     || return 1
@@ -61,16 +68,31 @@ fi
     hide
     exit 0
   fi
-  args=(--set "$NAME" drawing=on icon="$icon" label="$count")
-  n=0
-  while ((n < 10)) && IFS=$'\t' read -r repo number title url; do
-    n=$((n + 1))
-    # SketchyBar runs the click through sh. The quoting keeps the URL one
-    # argument, whatever it holds.
-    args+=(--set "$NAME.row.$n" drawing=on label="$repo$sigil$number  $title"
-      click_script="open '${url//\'/\'\\\'\'}'; sketchybar --set $NAME popup.drawing=off")
+  labels=() urls=()
+  while ((${#labels[@]} < 10)) && IFS=$'\t' read -r repo number title url; do
+    labels+=("$repo$sigil$number  $title")
+    urls+=("$url")
   done
-  for ((n++; n <= 10; n++)); do
+  # SketchyBar sizes each popup row to its own text, so a short row's
+  # highlight and click would stop where its text ends. Every row gets the
+  # longest row's width instead. Monaspace Neon at 13 points, with the rows'
+  # 8-point padding, measured 16 + 8.05 points a character in a live popup. A
+  # closed popup lays out nothing, so asking SketchyBar is no use here.
+  longest=0
+  for label in "${labels[@]}"; do
+    ((${#label} > longest)) && longest=${#label}
+  done
+  width=$((16 + (805 * longest + 99) / 100))
+  args=(--set "$NAME" drawing=on icon="$icon" label="$count")
+  for i in "${!labels[@]}"; do
+    n=$((i + 1)) url=${urls[i]}
+    # SketchyBar runs the click through sh. The quoting keeps the URL one
+    # argument, whatever it holds. The popup closes under the pointer, so the
+    # row gets no mouse.exited and the click clears its highlight.
+    args+=(--set "$NAME.row.$n" drawing=on label="${labels[i]}" width="$width"
+      click_script="open '${url//\'/\'\\\'\'}'; sketchybar --set $NAME popup.drawing=off --set $NAME.row.$n background.drawing=off")
+  done
+  for ((n = ${#labels[@]} + 1; n <= 10; n++)); do
     args+=(--set "$NAME.row.$n" drawing=off)
   done
   sketchybar "${args[@]}"

@@ -23,7 +23,11 @@ while IFS= read -r line <&"$events"; do
   IFS=$'\t' read -r event mode < <(jq -r '[._event // "", .mode // ""] | @tsv' <<<"$line" 2>/dev/null)
   bar_args=()
   case $event in
-    focus-changed | focused-workspace-changed) render_workspaces ;;
+    # The review chips close their popups on the trigger.
+    focus-changed | focused-workspace-changed)
+      render_workspaces
+      bar_args+=(--trigger aerospace_focus_change)
+      ;;
     mode-changed) render_mode "$mode" ;;
     *) continue ;;
   esac
