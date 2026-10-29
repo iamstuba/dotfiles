@@ -17,3 +17,6 @@
 .pi/
 .pi-subagents/
 .pi-goal/
+
+# Personal notes, kept out of every repo.
+.scratch/

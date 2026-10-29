@@ -5,6 +5,29 @@
 - Answer questions before editing or running commands.
 - Comments should be short and explain the "why", not the "how".
 
+## Worktrees
+
+- Do any task that changes repo files in a git worktree, never in the main
+  checkout. Put it under `<repo>.worktrees/<branch-slug>`, a sibling of the
+  main checkout. Read-only questions don't need a worktree.
+- Create it with `git worktree add`, not Claude Code's EnterWorktree `name`
+  mode. That mode nests worktrees inside the repo, so the repo's test runners
+  collect their files too. Then switch in with EnterWorktree `path`.
+- While the session is in a worktree, EnterWorktree `path` accepts only the
+  same repo's `.claude/worktrees/`, so it can't switch between sibling
+  worktrees.
+- After creating a worktree, install dependencies and run any setup the repo
+  needs, such as codegen, env files, and build steps, so that tests and lint
+  pass there.
+- Keep the main checkout on the default branch.
+
+## Scratch notes
+
+- Notes, specs, and tickets go in `<main checkout>/.scratch/`, never in a
+  worktree's `.scratch/`. Write them by absolute path without leaving the
+  worktree.
+- `.scratch/` is local-only and globally git-ignored. Never commit it.
+
 Everything below applies to everything you produce. Code and comments count as
 writing. Audit against it before sending, not after.
 
