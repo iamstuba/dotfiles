@@ -34,7 +34,15 @@ else
   compinit -d "$HOME/.zcompdump"
 fi
 
-zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'  # doc<TAB> finds Documents, and back
+# Smart case: doc<TAB> finds Documents, and DOC<TAB> falls back to ignoring case.
+# Folding case both ways in the first matcher broke the substring matcher
+# below: ext<TAB> rewrote the line to Ext and listed nothing.
+zstyle ':completion:*' matcher-list 'm:{a-z}={A-Z}' 'm:{a-zA-Z}={A-Za-z}'
+# File and directory names also match anywhere, so ext<TAB> offers both extras/
+# and next/. A per-tag matcher, because zsh reads matcher-list before it knows
+# the tag, and command names matched anywhere are too noisy.
+zstyle ':completion:*:(all-|globbed-|)files' matcher 'l:|=* r:|=*'
+zstyle ':completion:*:(local-|path-|named-|)directories' matcher 'l:|=* r:|=*'
 zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"
 zstyle ':completion:*' insert-tab pending                  # pasting a tab stops triggering completion
 # fzf-tab's README asks for `menu no`, so it can capture the unambiguous
