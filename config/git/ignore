@@ -20,3 +20,7 @@
 
 # Personal notes, kept out of every repo.
 .scratch/
+
+# Personal tool versions. mise reads either name.
+mise.local.toml
+.mise.local.toml
