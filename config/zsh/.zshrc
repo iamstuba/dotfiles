@@ -46,7 +46,7 @@ zstyle ':completion:*:(local-|path-|named-|)directories' matcher 'l:|=* r:|=*'
 zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"
 zstyle ':completion:*' insert-tab pending                  # pasting a tab stops triggering completion
 # fzf-tab's README asks for `menu no`, so it can capture the unambiguous
-# prefix itself. This overrides the `menu select` set above.
+# prefix itself.
 zstyle ':completion:*' menu no
 zstyle ':completion:*' verbose yes
 zstyle ':completion:*' group-name ''
