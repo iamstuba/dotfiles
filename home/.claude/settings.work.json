@@ -73,15 +73,16 @@
       "Bash(aws * send-command*)",
       "Bash(aws * execute-command*)",
       "Bash(aws * start-session*)",
-      "Bash(aws s3 rm *)",
-      "Bash(aws s3 mv *)",
-      "Bash(aws s3 sync *)",
+      "Bash(aws *s3 rm *)",
+      "Bash(aws *s3 mv *)",
+      "Bash(aws *s3 sync *)",
 
       "Bash(docker *push *)",
       "Bash(docker *push)",
 
-      "Bash(git push --force*)",
-      "Bash(git push -f*)",
+      "Bash(git *push *--force*)",
+      "Bash(git *push -f*)",
+      "Bash(git *push * -f*)",
       "Bash(sudo *)",
       "Bash(glab mr merge *)"
     ]
