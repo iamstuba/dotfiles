@@ -26,6 +26,11 @@ export EZA_CONFIG_DIR="$XDG_CONFIG_HOME/eza"
 # Named here rather than in a ~/.config/bat/config, because the symlink map
 # tracks bat's theme file and no bat config file. delta reads the same name.
 export BAT_THEME='tokyonight_night'
+# aube is mise's npm installer. On every npm: install it sends a warm-up
+# request to npm.jsr.io, and this stops it. aube runs inside the mise process
+# and reads only that process's env, so a value in mise's [env] never reaches
+# it. aube's advisory check stays on.
+export AUBE_DISABLE_SPECULATIVE_TLS=1
 
 # -U collapses duplicates, so re-sourcing this file cannot grow PATH.
 typeset -aU path

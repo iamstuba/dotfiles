@@ -11,6 +11,9 @@ set -eu
 # Env outranks config, so these hold for the whole run. The age matches the
 # manifest's.
 export MISE_USE_VERSIONS_HOST_TRACK=false MISE_DISABLE_UPDATE_WARNING=1 MISE_MINIMUM_RELEASE_AGE=7d
+# Stops aube's warm-up request to npm.jsr.io. No mise config can, and .zshenv
+# says why. The installer runs under sh, which never reads .zshenv.
+export AUBE_DISABLE_SPECULATIVE_TLS=1
 
 die() { echo "install: $*" >&2; exit 1; }
 case "${1:-}" in "") ;; --dry-run) DRY_RUN=1 ;; *) die "unknown argument $1" ;; esac

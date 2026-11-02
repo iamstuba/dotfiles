@@ -561,11 +561,11 @@ printf '#!/bin/sh\n[ "$1" = -n ] || echo "sudo $*" >>"$SG_LOG"\n' >"$sg/install-
 printf '#!/bin/sh\nexec /bin/sleep 1\n' >"$sg/install-stubs/sleep"
 # Installed at ~/.local/bin/mise, where the installer looks. x runs the tool
 # through to its stub, and anything else only logs. SG_ENV_LOG gets the
-# three settings each call ran under.
+# three settings and aube's two switches each call ran under.
 cat >"$sg/install-stubs/mise" <<'EOF'
 #!/bin/sh
 echo "mise $*" >>"$SG_LOG"
-echo "track=${MISE_USE_VERSIONS_HOST_TRACK-unset} warn=${MISE_DISABLE_UPDATE_WARNING-unset} age=${MISE_MINIMUM_RELEASE_AGE-unset}" >>"$SG_ENV_LOG"
+echo "track=${MISE_USE_VERSIONS_HOST_TRACK-unset} warn=${MISE_DISABLE_UPDATE_WARNING-unset} age=${MISE_MINIMUM_RELEASE_AGE-unset} aube=${AUBE_DISABLE_SPECULATIVE_TLS-unset} advisory=${AUBE_ADVISORY_CHECK-unset}" >>"$SG_ENV_LOG"
 if [ "$1" = x ]; then
   while [ "$1" != -- ]; do shift; done
   shift
@@ -618,7 +618,7 @@ sg_install_env_ok() { # $1: case
   calls=$(grep -c '^mise ' "$sg/$1/log") || true
   [ "$calls" -gt 0 ] || fail "install.sh $1 never called mise"
   lines=$(grep -c '' "$sg/$1/env-log") || true
-  other=$(grep -cvxF "track=false warn=1 age=$sg_install_age" "$sg/$1/env-log") || true
+  other=$(grep -cvxF "track=false warn=1 age=$sg_install_age aube=1 advisory=unset" "$sg/$1/env-log") || true
   [ "$lines" = "$calls" ] && [ "$other" = 0 ] || fail "install.sh $1 called mise $calls times, under:
 $(cat "$sg/$1/env-log")"
 }
@@ -1048,6 +1048,14 @@ if command -v zsh >/dev/null 2>&1; then
              EZA_CONFIG_DIR BAT_THEME; do
     want env "^$var=" "$var is not exported"
   done
+  # aube's switches come from .zshenv alone, which says why. Agents and apps
+  # start zsh without -i, so mise is not activated there. The shell runs under
+  # env -i, so nothing the caller exported can pass this.
+  aube_all=$(env -i HOME="$zsh_home" PATH=/usr/bin:/bin zsh -c 'printenv' 2>&1) \
+    || fail "shell: a non-interactive zsh exited non-zero: $aube_all"
+  aube_env=$(printf '%s\n' "$aube_all" | grep '^AUBE_') || true
+  [ "$aube_env" = AUBE_DISABLE_SPECULATIVE_TLS=1 ] \
+    || fail "shell: a non-interactive zsh has aube env '$aube_env', not AUBE_DISABLE_SPECULATIVE_TLS=1 alone"
   want path "^$root/bin$" "\$DOTFILES/bin is not on PATH"
   want path "^$zsh_home/.local/bin$" "~/.local/bin is not on PATH"
 
@@ -3268,10 +3276,10 @@ if command -v mise >/dev/null 2>&1; then
 import json, os, sys
 env = json.loads(os.environ["NET_ENV"])
 errs = []
-if env.get("AUBE_DISABLE_SPECULATIVE_TLS") != "1":
-    errs.append(f"AUBE_DISABLE_SPECULATIVE_TLS renders to {env.get('AUBE_DISABLE_SPECULATIVE_TLS')!r}, not '1'")
-if "AUBE_ADVISORY_CHECK" in env:
-    errs.append(f"AUBE_ADVISORY_CHECK is set to {env['AUBE_ADVISORY_CHECK']!r}; the advisory check stays on")
+# A value here has no effect on aube, for the reason .zshenv gives. Its
+# switches live in .zshenv and install.sh.
+for k in sorted(k for k in env if k.startswith("AUBE_")):
+    errs.append(f"[env] sets {k}, which aube inside mise never sees")
 for e in errs:
     print("  " + e, file=sys.stderr)
 sys.exit(1 if errs else 0)

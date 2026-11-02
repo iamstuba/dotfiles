@@ -12,11 +12,6 @@ idiomatic_version_file_enable_tools = ["node"]
 use_versions_host_track = false
 disable_update_warning = true                   # update:tools updates mise
 
-# aube, mise's npm installer, skips its speculative TLS warm-up to
-# npm.jsr.io. Its advisory check stays on.
-[env]
-AUBE_DISABLE_SPECULATIVE_TLS = "1"
-
 [tools]
 node = "lts"        # stays first: the npm: tools run on it
 pnpm = "latest"
