@@ -17,3 +17,29 @@ GLAB_CONFIG_DIR = "{{ env.HOME }}/.config/glab-cli"
 # aws configure otherwise offers to install skills and an MCP server into
 # coding agents' config dirs.
 AWS_CLI_AGENT_TOOLKIT_HINT_DISABLED = "true"
+# Node reads the Keychain itself, so a CA rotation reaches it with no file to
+# refresh. NODE_EXTRA_CA_CERTS stays out, and a repo on a Node too old for
+# this sets it in its own mise.local.toml.
+NODE_USE_SYSTEM_CA = "1"
+
+[hooks]
+# Global, so it fires for every JDK mise installs anywhere: a repo's pin, a
+# mise x on demand and mise upgrade. A failing hook only warns, so an install
+# never stops on it; ca:refresh is what reports a failed import.
+postinstall = 'sh "${DOTFILES:-$HOME/projects/iamstuba/dotfiles}/bin/keychain-ca" jdk'
+
+[tasks."ca:refresh"]
+description = "Re-export the keychain's CAs and import them into every mise JDK."
+# A global task cannot use {{ config_root }} to find the repo, so this
+# resolves it the way update:apps does.
+run = """
+  set -eu
+  ca="${DOTFILES:-$HOME/projects/iamstuba/dotfiles}/bin/keychain-ca"
+  sh "$ca" export
+  sh "$ca" jdk "${MISE_DATA_DIR:-$HOME/.local/share/mise}"/installs/java/*/
+"""
+
+# No run or description here, because either would replace config.toml's task
+# instead of adding to it. A rotated CA is picked up on the next update.
+[tasks."update:tools"]
+depends_post = ["ca:refresh"]

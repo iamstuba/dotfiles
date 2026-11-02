@@ -41,7 +41,7 @@ The rest of the installer. Nothing asks; the human can leave.
 _Avoid_: automatic part
 
 **Hook**:
-A shell command mise runs at a fixed point of bootstrap, with only system binaries on PATH. Three exist: `pre-packages`, `post-defaults`, `final`.
+A shell command mise runs at a fixed point of bootstrap, with only system binaries on PATH. Three exist: `pre-packages`, `post-defaults`, `final`. The work overlay's `[hooks].postinstall` is not a Hook. mise runs it after every tool install, anywhere, not at a point of bootstrap.
 _Avoid_: script, step, phase
 
 **Task**:

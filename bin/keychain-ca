@@ -1,0 +1,200 @@
+#!/bin/sh
+# Copies the CAs this Mac's admin trusts out of the System keychain, for tools
+# that read a PEM file or a JDK keystore instead of the Keychain.
+#
+#   keychain-ca export              write extra.pem, bundle.pem and Lima's override
+#   keychain-ca jdk [<java home>...]  import extra.pem into each JDK's cacerts
+#
+# With no java home, jdk reads the JDKs from MISE_INSTALLED_TOOLS, which mise
+# sets for a postinstall hook.
+set -eu
+
+# The installer runs this before any mise tool exists, and the parsing below
+# expects the LibreSSL that macOS ships, not a newer openssl on PATH.
+PATH=/usr/bin:/bin
+export PATH
+
+# Fixed, not configurable, so env lines that point tools at these files can
+# name the path.
+dir=$HOME/.local/share/corporate-ca
+extra=$dir/extra.pem
+
+die() { printf 'keychain-ca: %s\n' "$*" >&2; exit 1; }
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+# keytool imports only the first certificate of a file, so each gets its own.
+split_pem() { # $1: PEM file, $2: directory to write 1.pem, 2.pem, ... into
+  mkdir -p "$2"
+  awk -v d="$2" '
+    /-----BEGIN CERTIFICATE-----/ { n++; f = d "/" n ".pem" }
+    f { print > f }
+    /-----END CERTIFICATE-----/ { close(f); f = "" }
+  ' "$1"
+}
+
+sum256() { # $1: a file, which counts as empty when missing
+  if [ -f "$1" ]; then shasum -a 256 <"$1"; else shasum -a 256 </dev/null; fi
+}
+
+trusted_hashes() { # SHA-1 of each certificate with an admin trust setting
+  if ! security trust-settings-export -d "$work/trust.plist" >"$work/trust.out" 2>&1; then
+    # A Mac whose admin never set a trust setting has no CA to export.
+    grep -q 'No Trust Settings were found' "$work/trust.out" && return 0
+    cat "$work/trust.out" >&2
+    die "security trust-settings-export failed"
+  fi
+  plutil -convert xml1 -o "$work/trust.xml" "$work/trust.plist"
+  grep -Eo '<key>[0-9A-F]{40}</key>' "$work/trust.xml" | sed 's/<[^>]*>//g' | sort -u || true
+}
+
+# A trust setting can also mark a certificate Never Trust (result 3) or leave
+# its trust to the default (4), and neither makes it a root. No settings, or a
+# setting with no result, means trust as a root.
+trusted_as_root() { # $1: SHA-1
+  i=0 root=
+  while plutil -extract "trustList.$1.trustSettings.$i" xml1 -o /dev/null "$work/trust.plist" 2>/dev/null; do
+    r=$(plutil -extract "trustList.$1.trustSettings.$i.kSecTrustSettingsResult" raw -o - "$work/trust.plist" \
+      2>/dev/null || echo 1)
+    case $r in
+      3) return 1 ;;
+      1|2) root=1 ;;
+    esac
+    i=$((i + 1))
+  done
+  [ "$i" -eq 0 ] || [ -n "$root" ]
+}
+
+export_cas() {
+  # One file per System keychain certificate, named by the SHA-1 the trust
+  # settings use.
+  security find-certificate -a -Z -p /Library/Keychains/System.keychain >"$work/system.txt"
+  mkdir -p "$work/system"
+  awk -v d="$work/system" '
+    /^SHA-1 hash: / { h = $3 }
+    /-----BEGIN CERTIFICATE-----/ { f = d "/" h ".pem" }
+    f { print > f }
+    /-----END CERTIFICATE-----/ { close(f); f = "" }
+  ' "$work/system.txt"
+
+  : >"$work/extra.pem"
+  trusted_hashes >"$work/trusted"
+  while read -r h; do
+    c=$work/system/$h.pem
+    [ -f "$c" ] || continue
+    trusted_as_root "$h" || continue
+    # An identity certificate can carry a trust setting too. Only a CA belongs
+    # in a trust store. LibreSSL's x509 has no -ext, so this reads -text.
+    openssl x509 -noout -text -in "$c" | grep -q 'CA:TRUE' || continue
+    openssl x509 -noout -checkend 0 -in "$c" >/dev/null || continue
+    cat "$c" >>"$work/extra.pem"
+  done <"$work/trusted"
+
+  security find-certificate -a -p /System/Library/Keychains/SystemRootCertificates.keychain >"$work/roots.pem"
+  [ -s "$work/roots.pem" ] || die "found no system roots"
+
+  mkdir -p "$dir"
+  before=$(sum256 "$extra")
+  # Moved into place whole, so AWS never reads half a bundle.
+  cat "$work/roots.pem" "$work/extra.pem" >"$dir/.bundle.pem.new"
+  cp "$work/extra.pem" "$dir/.extra.pem.new"
+  chmod 644 "$dir/.bundle.pem.new" "$dir/.extra.pem.new"
+  mv "$dir/.extra.pem.new" "$extra"
+  mv "$dir/.bundle.pem.new" "$dir/bundle.pem"
+  count=$(grep -c -- '-----BEGIN CERTIFICATE-----' "$extra" || true)
+  echo "keychain-ca: exported $count CAs to $dir"
+
+  # Colima ignores a COLIMA_HOME that does not exist, so this skips it too.
+  if [ -n "${COLIMA_HOME:-}" ] && [ -d "$COLIMA_HOME" ]; then
+    override=$COLIMA_HOME/_lima/_config/override.yaml
+    if [ -s "$extra" ]; then
+      # Written after extra.pem, because Lima refuses to start on a missing
+      # CA file.
+      mkdir -p "${override%/*}"
+      {
+        echo "# Written by keychain-ca export, which rewrites it whole."
+        printf 'caCerts: { files: ["%s"] }\n' "$extra"
+      } >"$override.new"
+      mv "$override.new" "$override"
+    else
+      rm -f "$override"
+    fi
+    # A running VM read the old CAs at its start.
+    if [ "$(sum256 "$extra")" != "$before" ] && [ -e "$COLIMA_HOME/default" ]; then
+      echo "keychain-ca: the CAs changed; run colima restart"
+    fi
+  fi
+}
+
+keytool_in() { # $1: java home, then keytool's arguments
+  kt_home=$1; shift
+  if ! "$kt_home/bin/keytool" "$@" -cacerts -storepass changeit </dev/null >"$work/keytool.out" 2>&1; then
+    cat "$work/keytool.out" >&2
+    die "keytool $1 failed in $kt_home"
+  fi
+}
+
+import_jdks() {
+  if [ ! -f "$extra" ]; then
+    echo "keychain-ca: no $extra yet, so no JDK changed; run keychain-ca export"
+    return 0
+  fi
+
+  if [ $# -eq 0 ]; then
+    printf '%s' "${MISE_INSTALLED_TOOLS:-[]}" >"$work/installed.json"
+    jq -r '.[] | select(.name == "java") | .install_path' "$work/installed.json" >"$work/candidates"
+  else
+    # A glob that matched nothing arrives as itself and is no directory.
+    : >"$work/candidates"
+    for a in "$@"; do
+      [ -d "$a" ] && printf '%s\n' "$a" >>"$work/candidates"
+    done
+  fi
+  # mise links each version under several names, such as temurin-25 and
+  # temurin-latest, so each JDK is counted once by its real path.
+  : >"$work/homes"
+  while read -r h; do
+    [ -d "$h" ] || die "mise reports a JDK at $h, which does not exist"
+    (cd "$h" && pwd -P) >>"$work/homes"
+  done <"$work/candidates"
+  sort -u -o "$work/homes" "$work/homes"
+  if [ ! -s "$work/homes" ]; then
+    echo "keychain-ca: no mise JDK to update"
+    return 0
+  fi
+
+  # The alias carries the certificate's fingerprint, so a rotated CA gets a
+  # new alias and the old one can be found and removed.
+  split_pem "$extra" "$work/certs"
+  : >"$work/want"
+  for c in "$work"/certs/*.pem; do
+    [ -f "$c" ] || continue
+    fp=$(openssl x509 -noout -fingerprint -sha256 -in "$c")
+    fp=$(printf '%s' "${fp#*=}" | tr -d : | tr 'A-F' 'a-f' | cut -c1-16)
+    printf 'keychain-ca-%s %s\n' "$fp" "$c" >>"$work/want"
+  done
+
+  while read -r h; do
+    keytool_in "$h" -list
+    grep -Eo '^keychain-ca-[0-9a-f]{16},' "$work/keytool.out" | tr -d , >"$work/have" || true
+    added=0 removed=0
+    while read -r alias c; do
+      grep -qxF "$alias" "$work/have" && continue
+      keytool_in "$h" -importcert -noprompt -alias "$alias" -file "$c"
+      added=$((added + 1))
+    done <"$work/want"
+    while read -r alias; do
+      awk -v a="$alias" '$1 == a { f = 1 } END { exit !f }' "$work/want" && continue
+      keytool_in "$h" -delete -alias "$alias"
+      removed=$((removed + 1))
+    done <"$work/have"
+    echo "keychain-ca: $h: $added CAs added, $removed removed"
+  done <"$work/homes"
+}
+
+case "${1:-}" in
+  export) export_cas ;;
+  jdk) shift; import_jdks "$@" ;;
+  *) die "usage: keychain-ca export | keychain-ca jdk [<java home>...]" ;;
+esac

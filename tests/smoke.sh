@@ -87,8 +87,20 @@ if "tools" in global_cfg and next(iter(global_cfg["tools"])) != "node":
     errs.append("node must be the first tool so npm: tools run on it")
 if "tools" in root:
     errs.append("repo-root file carries tools; they are only on PATH inside the clone")
-if set(work) - {"tools", "bootstrap", "env"}:
-    errs.append(f"overlay carries unexpected tables: {sorted(set(work) - {'tools', 'bootstrap', 'env'})}")
+if set(work) - {"tools", "bootstrap", "env", "hooks", "tasks"}:
+    errs.append(f"overlay carries unexpected tables: {sorted(set(work) - {'tools', 'bootstrap', 'env', 'hooks', 'tasks'})}")
+# The JDK import is the one hook. Any other runs after every install of
+# anything, anywhere, on the work Mac.
+if set(work.get("hooks", {})) - {"postinstall"}:
+    errs.append(f"work overlay's hooks are {sorted(work['hooks'])}, not only postinstall")
+# A block named after a config.toml task may carry depends_post and nothing
+# else, for the reason config.personal.toml's blocks may not.
+for name, task in work.get("tasks", {}).items():
+    if name in global_cfg.get("tasks", {}) and set(task) != {"depends_post"}:
+        errs.append(f"config.work.toml's {name} carries {sorted(task)}, not only depends_post")
+    for dep in task.get("depends_post", []):
+        if dep not in work.get("tasks", {}):
+            errs.append(f"config.work.toml's {name} runs {dep} after it, which the file never defines")
 # Only the work Mac uses gitlab.com, so glab and its env live in this overlay
 # and nowhere a personal Mac loads.
 if work.get("tools", {}).get("gitlab:gitlab-org/cli") != "latest":
@@ -509,6 +521,200 @@ $upd_upgrade
 $upd_open"
 upd_quiet "with a failed reopen"
 ok "update:apps quits and reopens LibreWolf"
+
+# keychain-ca export runs for real against this Mac's keychains in a temp
+# HOME. It reads public certificates and no secret. A personal Mac has no
+# admin-trusted CA and a work Mac has some, so each branch asserts what that
+# Mac should end with.
+kca=$tmp_home/keychain-ca
+kca_export() { # $1: HOME, $2: COLIMA_HOME or nothing for unset
+  (unset COLIMA_HOME
+   if [ -n "$2" ]; then export COLIMA_HOME="$2"; fi
+   HOME=$1 sh bin/keychain-ca export >"$1/out" 2>"$1/err") \
+    || fail "keychain-ca export: exited nonzero: $(cat "$1/err")"
+}
+kca_certs() { # $1: a PEM file; prints how many certificates it holds
+  grep -c -- '-----BEGIN CERTIFICATE-----' "$1" || true
+}
+mkdir -p "$kca/home/colima"
+kca_export "$kca/home" "$kca/home/colima"
+kca_dir=$kca/home/.local/share/corporate-ca
+[ -f "$kca_dir/extra.pem" ] || fail "keychain-ca export: wrote no extra.pem"
+[ -f "$kca_dir/bundle.pem" ] || fail "keychain-ca export: wrote no bundle.pem"
+/usr/bin/security find-certificate -a -p /System/Library/Keychains/SystemRootCertificates.keychain \
+  >"$kca/roots.pem" || fail "keychain-ca export: security could not list the system roots"
+kca_roots=$(kca_certs "$kca/roots.pem")
+kca_extra=$(kca_certs "$kca_dir/extra.pem")
+[ "$(kca_certs "$kca_dir/bundle.pem")" -eq $((kca_roots + kca_extra)) ] \
+  || fail "keychain-ca export: bundle.pem holds $(kca_certs "$kca_dir/bundle.pem") certificates, not $kca_roots system roots plus $kca_extra"
+# The bundle must end with extra.pem byte for byte, or AWS reads other CAs.
+[ "$(tail -c "$(wc -c <"$kca_dir/extra.pem")" "$kca_dir/bundle.pem" | shasum -a 256)" \
+  = "$(shasum -a 256 <"$kca_dir/extra.pem")" ] || fail "keychain-ca export: bundle.pem does not end with extra.pem"
+mkdir -p "$kca/split"
+awk -v d="$kca/split" '/-----BEGIN CERTIFICATE-----/ { n++; f = d "/" n ".pem" } f { print > f } /-----END CERTIFICATE-----/ { close(f); f = "" }' \
+  "$kca_dir/extra.pem"
+for c in "$kca"/split/*.pem; do
+  [ -f "$c" ] || continue
+  /usr/bin/openssl x509 -noout -text -in "$c" | grep -q 'CA:TRUE' \
+    || fail "keychain-ca export: extra.pem holds a certificate that is not a CA: $(/usr/bin/openssl x509 -noout -subject -in "$c")"
+  /usr/bin/openssl x509 -noout -checkend 0 -in "$c" >/dev/null \
+    || fail "keychain-ca export: extra.pem holds an expired certificate: $(/usr/bin/openssl x509 -noout -subject -in "$c")"
+done
+kca_override=$kca/home/colima/_lima/_config/override.yaml
+if [ "$kca_extra" -gt 0 ]; then
+  kca_files=$(yq -o json -I 0 '.caCerts.files' "$kca_override") \
+    || fail "keychain-ca export: override.yaml is missing or does not parse"
+  [ "$kca_files" = "[\"$kca_dir/extra.pem\"]" ] \
+    || fail "keychain-ca export: override.yaml names $kca_files, not extra.pem's absolute path"
+else
+  [ ! -e "$kca_override" ] || fail "keychain-ca export: wrote override.yaml with no CA to name"
+fi
+grep -q 'restart' "$kca/home/out" && fail "keychain-ca export: asked for a restart with no VM: $(cat "$kca/home/out")"
+# A COLIMA_HOME that does not exist yet is one Colima ignores, so the script
+# must not create it.
+kca_export "$kca/home" "$kca/missing"
+[ ! -e "$kca/missing" ] || fail "keychain-ca export: created a missing COLIMA_HOME"
+grep -q 'restart' "$kca/home/out" && fail "keychain-ca export: asked for a restart with no COLIMA_HOME: $(cat "$kca/home/out")"
+# With a VM, a changed extra.pem asks for a restart and an unchanged one
+# does not. A fresh HOME has no previous extra.pem, which counts as empty.
+mkdir -p "$kca/vm/colima/default"
+kca_export "$kca/vm" "$kca/vm/colima"
+if [ "$kca_extra" -gt 0 ]; then
+  grep -qx '.*colima restart.*' "$kca/vm/out" || fail "keychain-ca export: new CAs and a VM, but no restart line: $(cat "$kca/vm/out")"
+else
+  grep -q 'restart' "$kca/vm/out" && fail "keychain-ca export: no CA changed, but asked for a restart: $(cat "$kca/vm/out")"
+fi
+kca_export "$kca/vm" "$kca/vm/colima"
+grep -q 'restart' "$kca/vm/out" && fail "keychain-ca export: asked for a restart on an unchanged keychain: $(cat "$kca/vm/out")"
+ok "keychain-ca export ($kca_extra CAs)"
+
+# keychain-ca jdk, through the work overlay's postinstall hook and ca:refresh,
+# against fake JDK homes whose keytool is a stub. The stub logs each call as
+# the JDK's name, the action and the alias, keeps the aliases in a file beside
+# it, and refuses a call real keytool would not take the same way.
+kj=$tmp_home/keychain-ca-jdk
+mkdir -p "$kj/home/.local/share/corporate-ca" "$kj/split"
+cat >"$kj/keytool" <<'STUB'
+#!/bin/sh
+home=$(cd "$(dirname "$0")/.." && pwd -P)
+op= alias= file=
+args=" $* "
+while [ $# -gt 0 ]; do
+  case $1 in
+    -list|-importcert|-delete) op=${1#-} ;;
+    -alias) alias=$2; shift ;;
+    -file) file=$2; shift ;;
+  esac
+  shift
+done
+case $args in *" -cacerts "*) ;; *) echo "stub: not the JDK's cacerts: $args" >&2; exit 2 ;; esac
+case $args in *" -storepass changeit "*) ;; *) echo "stub: no cacerts password: $args" >&2; exit 2 ;; esac
+touch "$home/aliases"
+case $op in
+  list)
+    echo "${home##*/} list" >>"$KT_LOG"
+    echo "Your keystore contains some entries"
+    echo "examplerootca [jdk], Nov 2, 2026, trustedCertEntry, "
+    sed 's/$/, Nov 2, 2026, trustedCertEntry, /' "$home/aliases" ;;
+  importcert)
+    echo "${home##*/} import $alias" >>"$KT_LOG"
+    [ -z "${KT_FAIL:-}" ] || exit 1
+    case $args in *" -noprompt "*) ;; *) echo "stub: import would prompt" >&2; exit 2 ;; esac
+    # Real keytool imports only a file's first certificate.
+    [ "$(grep -c -- '-----BEGIN CERTIFICATE-----' "$file")" -eq 1 ] || { echo "stub: $file holds more than one certificate" >&2; exit 2; }
+    grep -qxF "$alias" "$home/aliases" && { echo "stub: alias $alias exists" >&2; exit 2; }
+    echo "$alias" >>"$home/aliases" ;;
+  delete)
+    echo "${home##*/} delete $alias" >>"$KT_LOG"
+    grep -vxF "$alias" "$home/aliases" >"$home/aliases.new" || true
+    mv "$home/aliases.new" "$home/aliases" ;;
+  *) echo "stub: unexpected call: $args" >&2; exit 2 ;;
+esac
+STUB
+chmod +x "$kj/keytool"
+kj_jdk() { # $1: a fake JDK home to create
+  mkdir -p "$1/bin"
+  cp "$kj/keytool" "$1/bin/keytool"
+}
+kj_jdk "$kj/jdks/a"
+# Two certificates every Mac has. Their aliases come from the DER's SHA-256,
+# not from the fingerprint the script reads.
+/usr/bin/security find-certificate -a -p /System/Library/Keychains/SystemRootCertificates.keychain >"$kj/roots.pem"
+awk -v d="$kj/split" '/-----BEGIN CERTIFICATE-----/ { n++; f = d "/" n ".pem" } n > 2 { exit } f { print > f } /-----END CERTIFICATE-----/ { close(f); f = "" }' \
+  "$kj/roots.pem"
+cat "$kj/split/1.pem" "$kj/split/2.pem" >"$kj/fixture.pem"
+kj_alias() { printf 'keychain-ca-%s' "$(/usr/bin/openssl x509 -outform der -in "$1" | shasum -a 256 | cut -c1-16)"; }
+kj_a1=$(kj_alias "$kj/split/1.pem")
+kj_a2=$(kj_alias "$kj/split/2.pem")
+kj_extra=$kj/home/.local/share/corporate-ca/extra.pem
+cp "$kj/fixture.pem" "$kj_extra"
+
+kj_hook=$(yq -r '.hooks.postinstall' config/mise/config.work.toml) || fail "keychain-ca jdk: the work overlay has no postinstall hook"
+[ "$kj_hook" != null ] || fail "keychain-ca jdk: the work overlay has no postinstall hook"
+kj_run() { # $1: the command text, $2: MISE_INSTALLED_TOOLS, then NAME=value pairs
+  kj_text=$1 kj_tools=$2; shift 2
+  : >"$kj/log"
+  # A COLIMA_HOME from this Mac's env would send ca:refresh's export there.
+  (cd "$kj/home" && env -u COLIMA_HOME HOME=$kj/home DOTFILES=$root KT_LOG=$kj/log MISE_INSTALLED_TOOLS="$kj_tools" "$@" \
+    /bin/sh -o errexit -c "$kj_text" >"$kj/out" 2>"$kj/err")
+}
+kj_log_is() { # $1: the run, $2: the log it must have written
+  [ "$(cat "$kj/log")" = "$2" ] || fail "keychain-ca jdk $1 called keytool as:
+$(cat "$kj/log")
+  expected:
+$2"
+}
+kj_java="[{\"name\":\"node\",\"install_path\":\"$kj/jdks/none\"},{\"name\":\"java\",\"install_path\":\"$kj/jdks/a\"}]"
+
+kj_run "$kj_hook" "$kj_java" || fail "keychain-ca jdk: first import exited nonzero: $(cat "$kj/err")"
+kj_log_is "on a first install" "a list
+a import $kj_a1
+a import $kj_a2"
+kj_run "$kj_hook" "$kj_java" || fail "keychain-ca jdk: rerun exited nonzero: $(cat "$kj/err")"
+kj_log_is "on a rerun" "a list"
+for kj_tools in '[]' "[{\"name\":\"node\",\"install_path\":\"$kj/jdks/a\"}]"; do
+  kj_run "$kj_hook" "$kj_tools" || fail "keychain-ca jdk: $kj_tools exited nonzero: $(cat "$kj/err")"
+  kj_log_is "with no java entry" ""
+  [ "$(cat "$kj/out" "$kj/err" | wc -l | tr -d ' ')" -eq 1 ] \
+    || fail "keychain-ca jdk with no java entry printed more or less than one line: $(cat "$kj/out" "$kj/err")"
+done
+# A CA that left the keychain leaves the JDK on the next run.
+echo keychain-ca-0123456789abcdef >>"$kj/jdks/a/aliases"
+kj_run "$kj_hook" "$kj_java" || fail "keychain-ca jdk: removal exited nonzero: $(cat "$kj/err")"
+kj_log_is "with a rotated-out CA" "a list
+a delete keychain-ca-0123456789abcdef"
+# A failing hook only warns, so ca:refresh is what must see the failure.
+kj_jdk "$kj/jdks/broken"
+kj_run "$kj_hook" "[{\"name\":\"java\",\"install_path\":\"$kj/jdks/broken\"}]" KT_FAIL=1 \
+  && fail "keychain-ca jdk: a failed keytool import exited 0"
+# Every CA gone from the keychain leaves an empty extra.pem, and none of
+# them may stay trusted.
+: >"$kj_extra"
+kj_run "$kj_hook" "$kj_java" || fail "keychain-ca jdk: empty extra.pem exited nonzero: $(cat "$kj/err")"
+kj_log_is "with an empty extra.pem" "a list
+a delete $kj_a1
+a delete $kj_a2"
+rm "$kj_extra"
+kj_run "$kj_hook" "$kj_java" || fail "keychain-ca jdk: missing extra.pem exited nonzero: $(cat "$kj/err")"
+kj_log_is "with no extra.pem" ""
+[ "$(cat "$kj/out" "$kj/err" | wc -l | tr -d ' ')" -eq 1 ] \
+  || fail "keychain-ca jdk with no extra.pem printed more or less than one line: $(cat "$kj/out" "$kj/err")"
+
+# ca:refresh exports for real, then imports into each JDK mise installed
+# once, though mise links each version under several names.
+kj_refresh=$(yq -r '.tasks."ca:refresh".run' config/mise/config.work.toml) || fail "keychain-ca jdk: no ca:refresh"
+[ "$kj_refresh" != null ] || fail "keychain-ca jdk: the work overlay has no ca:refresh"
+kj_run "$kj_refresh" '' MISE_DATA_DIR="$kj/data" \
+  || fail "ca:refresh with no mise JDK exited nonzero: $(cat "$kj/err")"
+kj_log_is "from ca:refresh with no mise JDK" ""
+kj_jdk "$kj/data/installs/java/b"
+ln -s ./b "$kj/data/installs/java/latest"
+kj_run "$kj_refresh" '' MISE_DATA_DIR="$kj/data" || fail "ca:refresh exited nonzero: $(cat "$kj/err")"
+[ "$(grep -c '^b list$' "$kj/log")" -eq 1 ] || fail "ca:refresh did not list b's cacerts exactly once: $(cat "$kj/log")"
+[ "$(grep -c '^b import keychain-ca-[0-9a-f]\{16\}$' "$kj/log")" -eq "$kca_extra" ] \
+  || fail "ca:refresh did not import the $kca_extra CAs export found: $(cat "$kj/log")"
+[ "$(wc -l <"$kj/log" | tr -d ' ')" -eq $((kca_extra + 1)) ] || fail "ca:refresh called keytool for more than b: $(cat "$kj/log")"
+ok "keychain-ca jdk"
 
 # setup-git and install.sh, run for real in a temp HOME. The forge CLIs,
 # ssh-keygen and ssh-add are stubs that log their arguments, so nothing
@@ -3398,18 +3604,34 @@ fi
 
 # glab reads GLAB_CONFIG_DIR as given, so an unrendered "{{ env.HOME }}" would
 # send its login to a relative directory named after the template. The temp
-# HOME holds only the work overlay. Offline, because mise env otherwise asks
-# gitlab.com which version "latest" is; offline it warns and still renders.
+# HOME links both global files, so mise answers with what a work Mac merges.
+# Offline, because mise env otherwise asks gitlab.com which version "latest"
+# is; offline it warns and still renders.
 if command -v mise >/dev/null 2>&1; then
   # Inside $tmp_home so the trap above already cleans it up.
   env_home=$tmp_home/work-env
   mkdir -p "$env_home/.config/mise"
+  ln -s "$root/config/mise/config.toml" "$env_home/.config/mise/config.toml"
   ln -s "$root/config/mise/config.work.toml" "$env_home/.config/mise/config.work.toml"
-  work_env=$(unset XDG_CONFIG_HOME
-             cd "$env_home"
-             HOME=$env_home MISE_ENV=work MISE_CEILING_PATHS=$env_home MISE_OFFLINE=1 \
-               mise env --json 2>"$env_home/stderr") \
+  env_mise() { # $1: the env, then mise's arguments
+    (env_env=$1; shift
+     unset XDG_CONFIG_HOME
+     cd "$env_home"
+     HOME=$env_home MISE_ENV=$env_env MISE_CEILING_PATHS=$env_home MISE_OFFLINE=1 \
+       mise "$@" 2>"$env_home/stderr")
+  }
+  work_env=$(env_mise work env --json) \
     || fail "work env: mise env failed under the temp HOME: $(cat "$env_home/stderr")"
+  # A run in the work block would replace config.toml's, so the work run must
+  # equal the one a Mac without the overlay gets.
+  env_tools_work=$(env_mise work tasks info update:tools --json) \
+    || fail "work env: tasks info update:tools under work failed: $(cat "$env_home/stderr")"
+  env_tools_base=$(env_mise "" tasks info update:tools --json) \
+    || fail "work env: tasks info update:tools failed: $(cat "$env_home/stderr")"
+  [ "$(printf '%s' "$env_tools_work" | jq -c '.depends_post | index("ca:refresh") != null')" = true ] \
+    || fail "work env: update:tools does not run ca:refresh after it: $env_tools_work"
+  [ "$(printf '%s\n%s\n' "$env_tools_work" "$env_tools_base" | jq -s -c '.[0].run == .[1].run and (.[0].run | length > 0)')" = true ] \
+    || fail "work env: under work, update:tools' run is not config.toml's: $env_tools_work"
   WORK_ENV=$work_env WANT_DIR=$env_home/.config/glab-cli python3 - <<'PY' || fail "work env"
 import json, os, sys
 env = json.loads(os.environ["WORK_ENV"])
@@ -3420,6 +3642,13 @@ if env.get("GLAB_SEND_TELEMETRY") != "0":
     errs.append(f"GLAB_SEND_TELEMETRY renders to {env.get('GLAB_SEND_TELEMETRY')!r}, not '0'")
 if env.get("AWS_CLI_AGENT_TOOLKIT_HINT_DISABLED") != "true":
     errs.append(f"AWS_CLI_AGENT_TOOLKIT_HINT_DISABLED renders to {env.get('AWS_CLI_AGENT_TOOLKIT_HINT_DISABLED')!r}, not 'true'")
+# Node reads the Keychain. The file-based variables stay out. A missing file
+# makes Apple's curl exit 77, and a JDK gets its CAs in its own cacerts.
+if env.get("NODE_USE_SYSTEM_CA") != "1":
+    errs.append(f"NODE_USE_SYSTEM_CA renders to {env.get('NODE_USE_SYSTEM_CA')!r}, not '1'")
+for k in ("NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "JAVA_TOOL_OPTIONS"):
+    if k in env:
+        errs.append(f"the work overlay sets {k}")
 for e in errs:
     print("  " + e, file=sys.stderr)
 sys.exit(1 if errs else 0)
