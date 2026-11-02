@@ -109,7 +109,7 @@ The one colour scheme and font pair every tracked config uses. Tokyo Night Night
 _Avoid_: colorscheme, palette, theme pack
 
 **Area**:
-The unit implementation runs in, one at a time: the files owned by a single tool.
+The unit implementation runs in, one at a time: the files one spec implements, from the tickets that own them.
 _Avoid_: feature, epic, milestone
 
 **Rehearsal**:
@@ -122,7 +122,11 @@ _Avoid_: CI, test suite
 
 **Probe**:
 One named section of the smoke test, passing or failing on its own line. Asks the tool it covers wherever it can, because a config file containing the right line proves only that someone wrote the line.
-_Avoid_: block, check, assertion, case
+_Avoid_: block, assertion, case
+
+**Live check**:
+A check run once on a real Mac against real services, its result recorded in the issue that ran it. Never part of the smoke test.
+_Avoid_: probe, one-off test, manual test
 
 **Launcher**:
 The field on Cmd+Space that opens apps, pastes from clipboard history and answers sums. Vorssaint's Command Bar.
