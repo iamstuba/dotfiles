@@ -100,8 +100,20 @@ if work.get("env", {}).get("GLAB_CONFIG_DIR") != "{{ env.HOME }}/.config/glab-cl
 for p in sorted([*pathlib.Path(".").glob("mise*.toml"), *pathlib.Path("config/mise").glob("*.toml")]):
     if p != pathlib.Path("config/mise/config.work.toml") and "gitlab:" in p.read_text():
         errs.append(f"{p} names gitlab:, which belongs only in config/mise/config.work.toml")
-if set(root_work) - {"bootstrap", "dotfiles"}:
-    errs.append(f"repo-root overlay carries more than packages and its link: {sorted(set(root_work) - {'bootstrap', 'dotfiles'})}")
+if set(root_work) - {"bootstrap", "dotfiles", "tasks"}:
+    errs.append(f"repo-root overlay carries more than packages, its link and tasks: {sorted(set(root_work) - {'bootstrap', 'dotfiles', 'tasks'})}")
+# A block named after a mise.toml task may carry depends_post and nothing
+# else, for the reason config.personal.toml's blocks may not.
+for name, task in root_work.get("tasks", {}).items():
+    if name in root.get("tasks", {}) and set(task) != {"depends_post"}:
+        errs.append(f"mise.work.toml's {name} carries {sorted(task)}, not only depends_post")
+    for dep in task.get("depends_post", []):
+        if dep not in root_work.get("tasks", {}):
+            errs.append(f"mise.work.toml's {name} runs {dep} after it, which the file never defines")
+# setup-claude is in mise.toml, and a commandless block layers onto a task
+# only from the same half of the manifest, so one here would do nothing.
+if "setup-claude" in work.get("tasks", {}):
+    errs.append("config/mise/config.work.toml defines setup-claude, which layers onto nothing; it belongs in mise.work.toml")
 # Its one row links the global overlay. Any other row belongs in mise.toml or
 # mise.personal.toml, and without this one the work overlay stops loading.
 if set(root_work.get("dotfiles", {})) != {"~/.config/mise/config.work.toml"}:
@@ -1566,6 +1578,97 @@ probe_yaml "claude shared settings" home/.claude/settings.shared.json '{
 [ "$(yq -p json -o json -I0 'del(.permissions.deny) | [.. | select(tag != "!!map")] | length' home/.claude/settings.shared.json)" = 0 ] \
   || fail "home/.claude/settings.shared.json holds more than permissions.deny, which setup-claude never merges"
 
+# The work Mac's lists, asserted whole for the reason the shared list is.
+# setup-claude:work merges only these two lists, so anything else in the file
+# would be dropped silently.
+probe_yaml "claude work settings" home/.claude/settings.work.json '{
+  "permissions.deny": [
+    "Bash(kubectl *secret*)",
+    "Bash(kubectl *--raw*)",
+    "Read(~/.kube/config)",
+    "Edit(~/.kube/config)",
+    "Bash(vault *kv get*)",
+    "Bash(vault *read *)",
+    "Bash(vault *print*)",
+    "Bash(vault *token*)",
+    "Bash(vault *login*)",
+    "Bash(vault *unwrap*)",
+    "Bash(*VAULT_TOKEN*)",
+    "Read(.vault-token)",
+    "Read(~/.vault-token)",
+    "Edit(~/.vault-token)",
+    "Read(~/.vault)",
+    "Bash(aws *get-login-password*)",
+    "Bash(aws *get-authorization-token*)",
+    "Bash(aws *export-credentials*)",
+    "Bash(aws *get-session-token*)",
+    "Bash(aws *get-secret-value*)",
+    "Bash(aws *--with-decryption*)",
+    "Bash(aws *assume-role*)",
+    "Bash(aws *get-role-credentials*)",
+    "Bash(docker-credential-*)",
+    "Read(~/.docker/config.json)",
+    "Edit(~/.docker/config.json)",
+    "Read(~/.ecr/**)",
+    "Read(~/.config/helm/registry/**)",
+    "Bash(glab *token*)",
+    "Read(~/.config/glab-cli/config.yml)",
+    "Edit(~/.config/glab-cli/config.yml)",
+    "Read(~/.*/cache/auth/**)",
+    "Read(~/.*/cache/aws-auth/**)",
+    "Read(~/.*/cache/aks-auth/**)",
+    "Read(~/.m2/settings.xml*)",
+    "Read(~/.npmrc*)",
+    "Read(~/.netrc*)",
+    "Read(~/.config/pip/pip.conf*)",
+    "Read(~/.config/uv/uv.toml*)",
+    "Read(~/.nuget/NuGet/NuGet.Config*)"
+  ],
+  "permissions.ask": [
+    "Bash(kubectl *apply *)",
+    "Bash(kubectl *create *)",
+    "Bash(kubectl *delete *)",
+    "Bash(kubectl *edit *)",
+    "Bash(kubectl *patch *)",
+    "Bash(kubectl *replace *)",
+    "Bash(kubectl *scale *)",
+    "Bash(kubectl *rollout *)",
+    "Bash(kubectl *exec *)",
+    "Bash(kubectl *port-forward *)",
+    "Bash(kubectl *drain *)",
+    "Bash(kubectl *cp *)",
+    "Bash(vault *)",
+    "Bash(aws * create-*)",
+    "Bash(aws * delete-*)",
+    "Bash(aws * put-*)",
+    "Bash(aws * update-*)",
+    "Bash(aws * modify-*)",
+    "Bash(aws * terminate-*)",
+    "Bash(aws * invoke*)",
+    "Bash(aws * send-command*)",
+    "Bash(aws * execute-command*)",
+    "Bash(aws * start-session*)",
+    "Bash(aws s3 rm *)",
+    "Bash(aws s3 mv *)",
+    "Bash(aws s3 sync *)",
+    "Bash(docker *push *)",
+    "Bash(docker *push)",
+    "Bash(git push --force*)",
+    "Bash(git push -f*)",
+    "Bash(sudo *)",
+    "Bash(glab mr merge *)"
+  ]
+}'
+[ "$(yq -p json -o json -I0 'del(.permissions.deny, .permissions.ask) | [.. | select(tag != "!!map")] | length' home/.claude/settings.work.json)" = 0 ] \
+  || fail "home/.claude/settings.work.json holds more than permissions.deny and permissions.ask, which setup-claude:work never merges"
+# An entry in both fragments says one file is out of date, and the work Mac
+# would carry it once anyway.
+cc_both=$(yq -p json -o json -I0 '.permissions.deny' home/.claude/settings.shared.json \
+  | jq -c --slurpfile work home/.claude/settings.work.json \
+      '[.[] | select(IN($work[0].permissions | (.deny // [])[], (.ask // [])[]))]') \
+  || fail "claude work settings: the overlap check could not read both fragments"
+[ "$cc_both" = "[]" ] || fail "claude work settings: in both fragments: $cc_both"
+
 # setup-claude, run the way mise runs it, in a temp HOME against a claude stub
 # that logs. CLAUDE_HAS names what the stub reports as present already.
 cc=$tmp_home/setup-claude
@@ -1590,6 +1693,8 @@ setup_claude() { # $1: what the stub already has
 }
 cc_deny=$(yq -p json -o json -I0 '.permissions.deny' home/.claude/settings.shared.json)
 
+# A fresh Mac gets the shared list and nothing else. The comparison is of the
+# whole file, so a merge that wrote an empty ask array fails here.
 rm -rf "$cc/home"
 setup_claude ""
 [ "$(yq -p json -o json -I0 '.' "$cc/home/.claude/settings.json")" = "{\"permissions\":{\"deny\":$cc_deny}}" ] \
@@ -1614,6 +1719,63 @@ sleep 1
 setup_claude "market plugin"
 [ "$(stat -f "%i %m" "$cc/home/.claude/settings.json")" = "$cc_before" ] || fail "setup-claude rewrote an unchanged file"
 ok "setup-claude"
+
+# setup-claude:work, run the way setup-claude is above but with no claude on
+# PATH, since the task calls nothing but the merge.
+ccw_run=$(yq -p toml -o json mise.work.toml | yq -r '.tasks."setup-claude:work".run // ""' | sed "s|{{ config_root }}|$root|g") \
+  || fail "setup-claude:work's run text could not be read from mise.work.toml"
+[ -n "$ccw_run" ] || fail "setup-claude:work has no run text in mise.work.toml"
+setup_claude_work() {
+  HOME=$cc/home PATH=$(dirname "$(command -v jq)"):/usr/bin:/bin \
+    /bin/sh -c "$ccw_run" 2>"$cc/err" || fail "setup-claude:work exited nonzero: $(cat "$cc/err")"
+}
+ccw_deny=$(yq -p json -o json -I0 '.permissions.deny' home/.claude/settings.work.json)
+ccw_ask=$(yq -p json -o json -I0 '.permissions.ask' home/.claude/settings.work.json)
+
+rm -rf "$cc/home"
+setup_claude_work
+[ "$(yq -p json -o json -I0 '.' "$cc/home/.claude/settings.json")" = "{\"permissions\":{\"deny\":$ccw_deny,\"ask\":$ccw_ask}}" ] \
+  || fail "setup-claude:work on a fresh Mac wrote: $(cat "$cc/home/.claude/settings.json")"
+
+# After setup-claude, as bootstrap runs them: the work entries follow the shared ones.
+rm -rf "$cc/home"
+setup_claude "market plugin"
+setup_claude_work
+ccw_want=$(printf '%s\n%s\n' "$cc_deny" "$ccw_deny" | jq -c -s '{permissions: {deny: add, ask: '"$ccw_ask"'}}')
+[ "$(yq -p json -o json -I0 '.' "$cc/home/.claude/settings.json")" = "$ccw_want" ] \
+  || fail "setup-claude:work after setup-claude wrote: $(cat "$cc/home/.claude/settings.json")"
+
+# A Mac's own keys and entries keep their place, and a work entry it already
+# has is neither moved nor added twice.
+printf '%s\n' '{"model": "opus", "permissions": {"defaultMode": "auto", "deny": ["Read(mine)", "Bash(glab *token*)"], "ask": ["Bash(mine *)"]}}' \
+  >"$cc/home/.claude/settings.json"
+chmod 600 "$cc/home/.claude/settings.json"
+ccw_inode=$(stat -f %i "$cc/home/.claude/settings.json")
+setup_claude_work
+ccw_got=$(yq -p json -o json -I0 '[.model, .permissions.defaultMode, .permissions.deny[0:2], .permissions.ask[0]]' "$cc/home/.claude/settings.json")
+[ "$ccw_got" = '["opus","auto",["Read(mine)","Bash(glab *token*)"],"Bash(mine *)"]' ] \
+  || fail "setup-claude:work lost or reordered a Mac's own settings: $ccw_got"
+ccw_lists=$(jq -c --argjson deny "$ccw_deny" --argjson ask "$ccw_ask" '[
+    (.permissions.deny | length == (unique | length)), (.permissions.ask | length == (unique | length)),
+    ($deny - .permissions.deny == []), ($ask - .permissions.ask == []),
+    (.permissions.deny | length), (.permissions.ask | length)
+  ]' "$cc/home/.claude/settings.json")
+# The Mac's one own entry plus 40 work denies, and its one own entry plus 32
+# work asks.
+[ "$ccw_lists" = "[true,true,true,true,41,33]" ] \
+  || fail "setup-claude:work left duplicates or missing entries (unique deny, unique ask, all deny, all ask, counts): $ccw_lists"
+# A run that changes the file keeps its mode and inode. mktemp makes 600
+# files, so the mode alone would pass a merge that moved its temp file over.
+[ "$(stat -f %Lp "$cc/home/.claude/settings.json")" = 600 ] \
+  || fail "setup-claude:work changed the file's mode to $(stat -f %Lp "$cc/home/.claude/settings.json")"
+[ "$(stat -f %i "$cc/home/.claude/settings.json")" = "$ccw_inode" ] \
+  || fail "setup-claude:work replaced the file instead of writing it in place"
+
+ccw_before=$(stat -f "%i %m" "$cc/home/.claude/settings.json")
+sleep 1
+setup_claude_work
+[ "$(stat -f "%i %m" "$cc/home/.claude/settings.json")" = "$ccw_before" ] || fail "setup-claude:work rewrote an unchanged file"
+ok "setup-claude:work"
 
 # pi's settings. The provider and model are the pair that decides whether a
 # fresh Mac's first `pi` opens on a working model or on a login error, so both
@@ -3242,6 +3404,8 @@ if env.get("GLAB_CONFIG_DIR") != os.environ["WANT_DIR"]:
     errs.append(f"GLAB_CONFIG_DIR renders to {env.get('GLAB_CONFIG_DIR')!r}, not {os.environ['WANT_DIR']!r}")
 if env.get("GLAB_SEND_TELEMETRY") != "0":
     errs.append(f"GLAB_SEND_TELEMETRY renders to {env.get('GLAB_SEND_TELEMETRY')!r}, not '0'")
+if env.get("AWS_CLI_AGENT_TOOLKIT_HINT_DISABLED") != "true":
+    errs.append(f"AWS_CLI_AGENT_TOOLKIT_HINT_DISABLED renders to {env.get('AWS_CLI_AGENT_TOOLKIT_HINT_DISABLED')!r}, not 'true'")
 for e in errs:
     print("  " + e, file=sys.stderr)
 sys.exit(1 if errs else 0)
@@ -3249,6 +3413,41 @@ PY
   ok "work env"
 else
   printf 'skip work env: mise is not on PATH\n'
+fi
+
+# mise decides whether setup-claude runs setup-claude:work, so this asks
+# mise. Trust and the ceiling are pinned for the reasons the dry run gives.
+# The personal env asks about setup-claude first, so a trust failure cannot
+# pass as the missing task.
+if command -v mise >/dev/null 2>&1; then
+  wire_home=$tmp_home/setup-claude-wiring
+  wire_state=$wire_home/.local/state/mise
+  mkdir -p "$wire_home"
+  wire_mise() { # $1: the env, then mise's arguments
+    (wire_env=$1; shift
+     unset XDG_CONFIG_HOME MISE_TRUSTED_CONFIG_PATHS
+     HOME=$wire_home MISE_STATE_DIR=$wire_state MISE_CEILING_PATHS=$mise_ceiling MISE_OFFLINE=1 \
+       MISE_ENV=$wire_env mise "$@" 2>"$wire_home/stderr")
+  }
+  wire_mise "" trust "$root/mise.toml" >/dev/null \
+    || fail "setup-claude wiring: mise trust failed: $(cat "$wire_home/stderr")"
+  wire_work=$(wire_mise work tasks info setup-claude --json) \
+    || fail "setup-claude wiring: tasks info under work failed: $(cat "$wire_home/stderr")"
+  wire_personal=$(wire_mise personal tasks info setup-claude --json) \
+    || fail "setup-claude wiring: tasks info under personal failed: $(cat "$wire_home/stderr")"
+  [ "$(printf '%s' "$wire_work" | jq -c '.depends_post | index("setup-claude:work") != null')" = true ] \
+    || fail "setup-claude wiring: under work, setup-claude does not run setup-claude:work after it: $wire_work"
+  # A run in the work block would replace mise.toml's, and an empty array
+  # there leaves it alone, so the work run must equal the personal one.
+  [ "$(printf '%s\n%s\n' "$wire_work" "$wire_personal" | jq -s -c '.[0].run == .[1].run and (.[0].run | length > 0)')" = true ] \
+    || fail "setup-claude wiring: under work, setup-claude's run is not mise.toml's: $wire_work"
+  [ "$(printf '%s' "$wire_personal" | jq -c '.depends_post | index("setup-claude:work")')" = null ] \
+    || fail "setup-claude wiring: under personal, setup-claude runs setup-claude:work: $wire_personal"
+  wire_mise personal tasks info setup-claude:work >/dev/null \
+    && fail "setup-claude wiring: a personal Mac defines setup-claude:work"
+  ok "setup-claude wiring"
+else
+  printf 'skip setup-claude wiring: mise is not on PATH\n'
 fi
 
 # mise silently drops a setting key it does not know, so ask mise what the

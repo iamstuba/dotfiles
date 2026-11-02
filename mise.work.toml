@@ -1,7 +1,8 @@
 # Repo-root half of the work overlay, read only when MISE_ENV includes "work".
-# It holds what the global overlay cannot: the link to that overlay, and
-# packages marked absent, which only a file outranking mise.toml can turn off.
-# Tools and added packages stay in config/mise/config.work.toml.
+# It holds what the global overlay cannot: the link to that overlay, packages
+# marked absent, which only a file outranking mise.toml can turn off, and
+# tasks that need the clone through {{ config_root }}. Tools and added
+# packages stay in config/mise/config.work.toml.
 
 [dotfiles]
 "~/.config/mise/config.work.toml" = "config/mise/config.work.toml"
@@ -15,3 +16,12 @@
 "brew-cask:proton-mail-bridge" = { state = "absent" }
 # The work Mac brings its own Slack, so one app never has two sources.
 "brew-cask:slack" = { state = "absent" }
+
+[tasks."setup-claude:work"]
+description = "Merge the work deny and ask lists into Claude Code's settings."
+run = '"{{ config_root }}/bin/merge-claude-settings" "{{ config_root }}/home/.claude/settings.work.json"'
+
+# This block has no command on purpose. A run would replace mise.toml's task instead of
+# adding to it, and a description would replace its description.
+[tasks.setup-claude]
+depends_post = ["setup-claude:work"]

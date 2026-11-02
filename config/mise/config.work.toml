@@ -14,3 +14,6 @@ GLAB_SEND_TELEMETRY = "0"
 # glab falls back to ~/Library/Application Support when XDG_CONFIG_HOME is
 # unset, as it is in the installer and a GUI-launched bar.
 GLAB_CONFIG_DIR = "{{ env.HOME }}/.config/glab-cli"
+# aws configure otherwise offers to install skills and an MCP server into
+# coding agents' config dirs.
+AWS_CLI_AGENT_TOOLKIT_HINT_DISABLED = "true"

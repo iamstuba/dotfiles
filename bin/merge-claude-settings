@@ -1,0 +1,40 @@
+#!/bin/sh
+# Merges a fragment's permissions.deny and permissions.ask into
+# ~/.claude/settings.json. setup-claude passes the shared fragment and
+# setup-claude:work the work one, so the two tasks run one merge and cannot
+# drift.
+#
+# Every Mac keeps its own ~/.claude/settings.json, because Claude Code and
+# herdr write into it. The lists are the one part a Mac takes from the repo,
+# so this adds the fragment's entries to whatever is there and removes or
+# reorders nothing. It skips a list the fragment lacks, so a Mac never gains
+# an empty one. It rewrites the file only on a change, so a running Claude
+# Code sees no needless write, and in place, so the mode survives.
+set -eu
+
+die() { echo "merge-claude-settings: $*" >&2; exit 1; }
+[ $# -eq 1 ] || die "usage: merge-claude-settings <fragment>"
+fragment=$1
+settings=$HOME/.claude/settings.json
+
+# These checks run before the script creates anything, so a bad fragment
+# leaves HOME as it was.
+[ -f "$fragment" ] || die "$fragment is missing"
+# -e fails on no output too, so an empty or truncated file cannot merge nothing.
+jq -e 'type == "object"' "$fragment" >/dev/null 2>&1 || die "$fragment does not parse as a JSON object"
+
+mkdir -p "$HOME/.claude"
+[ -e "$settings" ] || printf '{}\n' >"$settings"
+merged=$(mktemp)
+trap 'rm -f "$merged"' EXIT
+jq --slurpfile frag "$fragment" '
+  ($frag[0].permissions // {}) as $want
+  | reduce ("deny", "ask") as $list (.;
+      if $want | has($list) then
+        (.permissions[$list] // []) as $have
+        | .permissions[$list] = $have + [$want[$list][] | select(IN($have[]) | not)]
+      else . end)
+' "$settings" >"$merged"
+if ! jq -e --slurpfile old "$settings" '. == $old[0]' "$merged" >/dev/null; then
+  cat "$merged" >"$settings"
+fi

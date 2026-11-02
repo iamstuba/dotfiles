@@ -205,24 +205,9 @@ run = "{{ config_root }}/bin/setup-git"
 
 [tasks.setup-claude]
 description = "Merge the shared deny list into Claude Code's settings and install mattpocock-skills."
-# Every Mac keeps its own ~/.claude/settings.json, because Claude Code and
-# herdr write into it. The deny list is the one part both Macs must share, so
-# it is added to whatever is there and nothing is removed or reordered. The
-# file is rewritten only on a change, and in place, so its mode survives.
 run = """
   set -eu
-  settings=$HOME/.claude/settings.json
-  mkdir -p "$HOME/.claude"
-  [ -e "$settings" ] || printf '{}\\n' >"$settings"
-  merged=$(mktemp)
-  jq --slurpfile shared "{{ config_root }}/home/.claude/settings.shared.json" '
-    (.permissions.deny // []) as $have
-    | .permissions.deny = $have + [$shared[0].permissions.deny[] | select(IN($have[]) | not)]
-  ' "$settings" >"$merged"
-  if ! jq -e --slurpfile old "$settings" '. == $old[0]' "$merged" >/dev/null; then
-    cat "$merged" >"$settings"
-  fi
-  rm -f "$merged"
+  "{{ config_root }}/bin/merge-claude-settings" "{{ config_root }}/home/.claude/settings.shared.json"
   # The official marketplace is registered only by the first interactive
   # session, which a fresh Mac has not had yet.
   if ! claude plugin marketplace list --json | jq -e 'any(.[]; .name == "claude-plugins-official")' >/dev/null; then

@@ -1,0 +1,89 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(kubectl *secret*)",
+      "Bash(kubectl *--raw*)",
+      "Read(~/.kube/config)",
+      "Edit(~/.kube/config)",
+
+      "Bash(vault *kv get*)",
+      "Bash(vault *read *)",
+      "Bash(vault *print*)",
+      "Bash(vault *token*)",
+      "Bash(vault *login*)",
+      "Bash(vault *unwrap*)",
+      "Bash(*VAULT_TOKEN*)",
+      "Read(.vault-token)",
+      "Read(~/.vault-token)",
+      "Edit(~/.vault-token)",
+      "Read(~/.vault)",
+
+      "Bash(aws *get-login-password*)",
+      "Bash(aws *get-authorization-token*)",
+      "Bash(aws *export-credentials*)",
+      "Bash(aws *get-session-token*)",
+      "Bash(aws *get-secret-value*)",
+      "Bash(aws *--with-decryption*)",
+      "Bash(aws *assume-role*)",
+      "Bash(aws *get-role-credentials*)",
+
+      "Bash(docker-credential-*)",
+      "Read(~/.docker/config.json)",
+      "Edit(~/.docker/config.json)",
+      "Read(~/.ecr/**)",
+      "Read(~/.config/helm/registry/**)",
+
+      "Bash(glab *token*)",
+      "Read(~/.config/glab-cli/config.yml)",
+      "Edit(~/.config/glab-cli/config.yml)",
+
+      "Read(~/.*/cache/auth/**)",
+      "Read(~/.*/cache/aws-auth/**)",
+      "Read(~/.*/cache/aks-auth/**)",
+      "Read(~/.m2/settings.xml*)",
+      "Read(~/.npmrc*)",
+      "Read(~/.netrc*)",
+      "Read(~/.config/pip/pip.conf*)",
+      "Read(~/.config/uv/uv.toml*)",
+      "Read(~/.nuget/NuGet/NuGet.Config*)"
+    ],
+    "ask": [
+      "Bash(kubectl *apply *)",
+      "Bash(kubectl *create *)",
+      "Bash(kubectl *delete *)",
+      "Bash(kubectl *edit *)",
+      "Bash(kubectl *patch *)",
+      "Bash(kubectl *replace *)",
+      "Bash(kubectl *scale *)",
+      "Bash(kubectl *rollout *)",
+      "Bash(kubectl *exec *)",
+      "Bash(kubectl *port-forward *)",
+      "Bash(kubectl *drain *)",
+      "Bash(kubectl *cp *)",
+
+      "Bash(vault *)",
+
+      "Bash(aws * create-*)",
+      "Bash(aws * delete-*)",
+      "Bash(aws * put-*)",
+      "Bash(aws * update-*)",
+      "Bash(aws * modify-*)",
+      "Bash(aws * terminate-*)",
+      "Bash(aws * invoke*)",
+      "Bash(aws * send-command*)",
+      "Bash(aws * execute-command*)",
+      "Bash(aws * start-session*)",
+      "Bash(aws s3 rm *)",
+      "Bash(aws s3 mv *)",
+      "Bash(aws s3 sync *)",
+
+      "Bash(docker *push *)",
+      "Bash(docker *push)",
+
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(sudo *)",
+      "Bash(glab mr merge *)"
+    ]
+  }
+}

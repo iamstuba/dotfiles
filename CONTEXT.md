@@ -13,7 +13,7 @@ The two tracked mise config files that together declare what every Mac gets. The
 _Avoid_: Brewfile, package list
 
 **Overlay**:
-A pair of mise config files loaded only when `MISE_ENV` names them. Every Mac names exactly one, `work` or `personal`. Each overlay has one file beside each half of the manifest: `config/mise/config.<env>.toml` for tools, settings and tasks, and the repo-root `mise.<env>.toml` for packages, dotfiles and hooks, and each repo-root file links its own global one. mise cannot remove a tool, dotfile or task the manifest declares, so whatever one kind of Mac must not get lives in the other kind's overlay. The work overlay turns manifest packages off and adds the tools only work uses.
+A pair of mise config files loaded only when `MISE_ENV` names them. Every Mac names exactly one, `work` or `personal`. Each overlay has one file beside each half of the manifest: `config/mise/config.<env>.toml` for tools, settings and tasks, and the repo-root `mise.<env>.toml` for packages, dotfiles, hooks and tasks that need the clone, and each repo-root file links its own global one. mise cannot remove a tool, dotfile or task the manifest declares, so whatever one kind of Mac must not get lives in the other kind's overlay. The work overlay turns manifest packages off and adds the tools only work uses.
 _Avoid_: profile, environment file, work manifest
 
 **Trust**:
@@ -93,7 +93,7 @@ _Avoid_: assistant, AI, bot, LLM
 _Avoid_: CLAUDE.md, rules file, system prompt
 
 **Shared settings**:
-`home/.claude/settings.shared.json`, the Claude Code deny list every Mac gets. `setup-claude` adds its entries to the Mac's own `~/.claude/settings.json`, which is never tracked or linked because Claude Code and herdr write into it. The rest of that file belongs to the Mac.
+`home/.claude/settings.shared.json`, the Claude Code deny list every Mac gets. `setup-claude` adds its entries to the Mac's own `~/.claude/settings.json`, which is never tracked or linked because Claude Code and herdr write into it. The work Mac also gets `home/.claude/settings.work.json`, whose deny and ask lists `setup-claude:work` merges the same way. The rest of that file belongs to the Mac.
 _Avoid_: settings template, base settings, tracked settings
 
 **Agent multiplexer**:
