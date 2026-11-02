@@ -1660,7 +1660,7 @@ probe_yaml "claude work settings" home/.claude/settings.work.json '{
     "Bash(git *push *--delete*)",
     "Bash(git *push -d*)",
     "Bash(git *push * -d*)",
-    "Bash(git *push * :*)",
+    "Bash(git *push * :**)",
     "Bash(git *push *--mirror*)",
     "Bash(git *push *--prune*)",
     "Bash(sudo *)",
@@ -1676,6 +1676,12 @@ cc_both=$(yq -p json -o json -I0 '.permissions.deny' home/.claude/settings.share
       '[.[] | select(IN($work[0].permissions | (.deny // [])[], (.ask // [])[]))]') \
   || fail "claude work settings: the overlap check could not read both fragments"
 [ "$cc_both" = "[]" ] || fail "claude work settings: in both fragments: $cc_both"
+# Claude Code reads a rule ending in :* as a literal prefix, so any other * in
+# it stops being a wildcard and the rule never matches.
+cc_prefix=$(jq -c -s '[.[].permissions | (.deny // [])[], (.ask // [])[] | select(endswith(":*)"))]' \
+    home/.claude/settings.shared.json home/.claude/settings.work.json) \
+  || fail "claude work settings: the prefix-syntax check could not read both fragments"
+[ "$cc_prefix" = "[]" ] || fail "claude work settings: rules ending in :* match as a literal prefix: $cc_prefix"
 
 # setup-claude, run the way mise runs it, in a temp HOME against a claude stub
 # that logs. CLAUDE_HAS names what the stub reports as present already.

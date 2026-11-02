@@ -87,7 +87,7 @@
       "Bash(git *push *--delete*)",
       "Bash(git *push -d*)",
       "Bash(git *push * -d*)",
-      "Bash(git *push * :*)",
+      "Bash(git *push * :**)",
       "Bash(git *push *--mirror*)",
       "Bash(git *push *--prune*)",
       "Bash(sudo *)",
