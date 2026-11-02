@@ -560,10 +560,12 @@ mkdir -p "$sg/install-stubs"
 printf '#!/bin/sh\n[ "$1" = -n ] || echo "sudo $*" >>"$SG_LOG"\n' >"$sg/install-stubs/sudo"
 printf '#!/bin/sh\nexec /bin/sleep 1\n' >"$sg/install-stubs/sleep"
 # Installed at ~/.local/bin/mise, where the installer looks. x runs the tool
-# through to its stub, and anything else only logs.
+# through to its stub, and anything else only logs. SG_ENV_LOG gets the
+# three settings each call ran under.
 cat >"$sg/install-stubs/mise" <<'EOF'
 #!/bin/sh
 echo "mise $*" >>"$SG_LOG"
+echo "track=${MISE_USE_VERSIONS_HOST_TRACK-unset} warn=${MISE_DISABLE_UPDATE_WARNING-unset} age=${MISE_MINIMUM_RELEASE_AGE-unset}" >>"$SG_ENV_LOG"
 if [ "$1" = x ]; then
   while [ "$1" != -- ]; do shift; done
   shift
@@ -592,13 +594,14 @@ sg_install() { # $1: case name, then NAME=value pairs
   c=$sg/$1
   shift
   : >"$c/log"
+  : >"$c/env-log"
   mkdir -p "$c/home/.local/bin" "$c/clone/.git" "$c/clone/.scratch/.git"
   cp "$sg/install-stubs/mise" "$c/home/.local/bin/mise"
   # The clone and the scratch clone already exist, so the installer clones
   # nothing. The Command Line Tools check reads the real /Library, and
   # smoke cannot run on a Mac without them.
   (cd "$c" && env -i PATH="$sg/install-stubs:$sg/stubs:/usr/bin:/bin" HOME="$c/home" SG_LOG="$c/log" \
-    SG_STATE="$c/state" DOTFILES="$c/clone" GIT_NAME='Test Person' GIT_PROFILES= "$@" \
+    SG_ENV_LOG="$c/env-log" SG_STATE="$c/state" DOTFILES="$c/clone" GIT_NAME='Test Person' GIT_PROFILES= "$@" \
     sh "$root/install.sh" </dev/null >"$c/out" 2>&1)
 }
 sg_install_tail() { # $1: case name; what every installer run ends with
@@ -606,6 +609,18 @@ sg_install_tail() { # $1: case name; what every installer run ends with
     "$sg/$1/clone/mise.personal.toml" "$sg/$1/clone/config/mise/config.toml" \
     "$sg/$1/clone/config/mise/config.work.toml" "$sg/$1/clone/config/mise/config.personal.toml"
   printf 'mise -C %s bootstrap --yes\nmise -C %s run setup-git\n' "$sg/$1/clone" "$sg/$1/clone"
+}
+# Every stub mise call, the first one included, ran under the manifest's
+# settings, so none fell back to mise's defaults before bootstrap links them.
+sg_install_age=$(yq -e -p toml -oy '.settings.minimum_release_age' config/mise/config.toml) \
+  || fail "config/mise/config.toml has no minimum_release_age"
+sg_install_env_ok() { # $1: case
+  calls=$(grep -c '^mise ' "$sg/$1/log") || true
+  [ "$calls" -gt 0 ] || fail "install.sh $1 never called mise"
+  lines=$(grep -c '' "$sg/$1/env-log") || true
+  other=$(grep -cvxF "track=false warn=1 age=$sg_install_age" "$sg/$1/env-log") || true
+  [ "$lines" = "$calls" ] && [ "$other" = 0 ] || fail "install.sh $1 called mise $calls times, under:
+$(cat "$sg/$1/env-log")"
 }
 sg_snap() { # Every file in the case's HOME with its checksum.
   (cd "$sg/$1/home" && find . \( -type f -o -type l \) -exec cksum {} + | sort)
@@ -824,6 +839,7 @@ ssh-add --apple-use-keychain $h/.ssh/id_ed25519_github
 $(sg_install_tail install-personal)"
 [ -e "$h/.ssh/id_ed25519_gitlab" ] && fail "install.sh personal made a GitLab key"
 sg_file_is install-personal .config/mise/miserc.toml 'env = ["personal"]'
+sg_install_env_ok install-personal
 ok "install.sh, a personal Mac"
 
 # The work Mac, fresh: the GitLab login right after the work question, the
@@ -848,6 +864,7 @@ ssh-keygen -t ed25519 -C work@example.com -f $h/.ssh/id_ed25519_gitlab
 ssh-add --apple-use-keychain $h/.ssh/id_ed25519_gitlab
 $(sg_install_tail install-work)"
 sg_file_is install-work .config/mise/miserc.toml 'env = ["work"]'
+sg_install_env_ok install-work
 # What the stub mise's `run setup-git` stands for.
 set -- install-work GIT_EMAIL=work@example.com GIT_PROFILES=
 sg_run "$@" sh "$root/bin/setup-git" || fail "setup-git install-work exited nonzero: $(cat "$sg/install-work/out")"
@@ -3224,4 +3241,42 @@ PY
   ok "work env"
 else
   printf 'skip work env: mise is not on PATH\n'
+fi
+
+# mise silently drops a setting key it does not know, so ask mise what the
+# manifest sets. The temp HOME holds only the global file, and every
+# variable that outranks it is unset. Offline for the reason "work env" gives.
+if command -v mise >/dev/null 2>&1; then
+  net_home=$tmp_home/mise-network
+  mkdir -p "$net_home/.config/mise"
+  ln -s "$root/config/mise/config.toml" "$net_home/.config/mise/config.toml"
+  net_vars=$(env | grep -Eo '^(MISE_USE_VERSIONS_HOST[A-Z_]*|MISE_DISABLE_UPDATE_WARNING|AUBE_[A-Z_]*)=' \
+    | tr -d =)
+  net_mise() {
+    (unset XDG_CONFIG_HOME MISE_GLOBAL_CONFIG_FILE MISE_GLOBAL_CONFIG_ROOT MISE_CONFIG_DIR MISE_ENV \
+       MISE_TRUSTED_CONFIG_PATHS $net_vars
+     cd "$net_home"
+     HOME=$net_home MISE_CEILING_PATHS=$net_home MISE_OFFLINE=1 mise "$@" 2>>"$net_home/stderr")
+  }
+  for want in use_versions_host_track=false disable_update_warning=true use_versions_host=true; do
+    got=$(net_mise settings get "${want%%=*}") \
+      || fail "mise network: settings get ${want%%=*} failed: $(cat "$net_home/stderr")"
+    [ "$got" = "${want#*=}" ] || fail "mise network: ${want%%=*} is $got, not ${want#*=}"
+  done
+  net_env=$(net_mise env --json) || fail "mise network: mise env failed: $(cat "$net_home/stderr")"
+  NET_ENV=$net_env python3 - <<'PY' || fail "mise network"
+import json, os, sys
+env = json.loads(os.environ["NET_ENV"])
+errs = []
+if env.get("AUBE_DISABLE_SPECULATIVE_TLS") != "1":
+    errs.append(f"AUBE_DISABLE_SPECULATIVE_TLS renders to {env.get('AUBE_DISABLE_SPECULATIVE_TLS')!r}, not '1'")
+if "AUBE_ADVISORY_CHECK" in env:
+    errs.append(f"AUBE_ADVISORY_CHECK is set to {env['AUBE_ADVISORY_CHECK']!r}; the advisory check stays on")
+for e in errs:
+    print("  " + e, file=sys.stderr)
+sys.exit(1 if errs else 0)
+PY
+  ok "mise network"
+else
+  printf 'skip mise network: mise is not on PATH\n'
 fi

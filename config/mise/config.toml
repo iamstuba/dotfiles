@@ -6,6 +6,16 @@
 minimum_release_age = "7d"                      # reaches tool backends, never casks
 minimum_release_age_excludes = ["claude"]
 idiomatic_version_file_enable_tools = ["node"]
+# Stops the report mise sends its versions host before each install. The host
+# itself stays on, because without it a fresh Mac's version lookups go to
+# api.github.com and exceed its anonymous rate limit.
+use_versions_host_track = false
+disable_update_warning = true                   # update:tools updates mise
+
+# aube, mise's npm installer, skips its speculative TLS warm-up to
+# npm.jsr.io. Its advisory check stays on.
+[env]
+AUBE_DISABLE_SPECULATIVE_TLS = "1"
 
 [tools]
 node = "lts"        # stays first: the npm: tools run on it

@@ -6,6 +6,11 @@
 # --dry-run prints every mutating command.
 # Environment: DOTFILES, DOTFILES_WORK, GIT_NAME, GIT_EMAIL, GIT_PROFILES.
 set -eu
+# Bootstrap links the manifest late, and until then mise runs on its
+# defaults. It reports every install and ignores the 7-day release age.
+# Env outranks config, so these hold for the whole run. The age matches the
+# manifest's.
+export MISE_USE_VERSIONS_HOST_TRACK=false MISE_DISABLE_UPDATE_WARNING=1 MISE_MINIMUM_RELEASE_AGE=7d
 
 die() { echo "install: $*" >&2; exit 1; }
 case "${1:-}" in "") ;; --dry-run) DRY_RUN=1 ;; *) die "unknown argument $1" ;; esac
