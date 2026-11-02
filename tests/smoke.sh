@@ -1048,7 +1048,7 @@ if command -v zsh >/dev/null 2>&1; then
              EZA_CONFIG_DIR BAT_THEME; do
     want env "^$var=" "$var is not exported"
   done
-  # aube's switches come from .zshenv alone, which says why. Agents and apps
+  # aube's switches come from .zshenv alone, which says why. Scripts and apps
   # start zsh without -i, so mise is not activated there. The shell runs under
   # env -i, so nothing the caller exported can pass this.
   aube_all=$(env -i HOME="$zsh_home" PATH=/usr/bin:/bin zsh -c 'printenv' 2>&1) \
