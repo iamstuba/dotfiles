@@ -78,6 +78,10 @@ On the work Mac, `update:tools` ends with `ca:refresh`, which re-exports the
 System keychain's CAs and imports them into every mise JDK, so
 `mise run ca:refresh` alone is enough after a CA rotation.
 
+The Colima VM needs `colima restart` when `ca:refresh` prints it as the next
+step. A change to the tracked Colima template reaches an existing VM only
+after `colima delete` and a fresh `colima start`.
+
 On a personal Mac, LibreWolf quits during `update:apps` and reopens after it.
 The first run asks to let the terminal control LibreWolf; allow it.
 
@@ -114,7 +118,7 @@ file does not exist, and `mise run check` warns when it finds one.
 - `config/mise/config.toml`: tools, settings, update tasks. Symlinked to `~/.config/mise/`.
 - `config/mise/config.work.toml`: loaded when `MISE_ENV` includes `work`. It holds the work-only tools, such as glab and the docker plugins, and the packages work adds, such as the docker CLI. It also holds their env and settings, the JDK CA postinstall and `ca:refresh`.
 - `config/mise/config.personal.toml`: pi, herdr and their tasks, loaded when `MISE_ENV` includes `personal`.
-- `mise.work.toml`: packages turned off at work, the work-only links such as glab's docker credential helper, and the task that merges the work Claude Code settings. `mise.personal.toml`: the dotfiles, pi's and herdr's among them, the bundled app removal and the LibreWolf policies a work Mac must not get. Each links its own global overlay. The installer sets `MISE_ENV` to exactly one of `work` and `personal`.
+- `mise.work.toml`: packages turned off at work, the work-only links such as glab's docker credential helper and the Colima template, and the task that merges the work Claude Code settings. `mise.personal.toml`: the dotfiles, pi's and herdr's among them, the bundled app removal and the LibreWolf policies a work Mac must not get. Each links its own global overlay. The installer sets `MISE_ENV` to exactly one of `work` and `personal`.
 - `config/`: mirrors `~/.config`. `home/`: top-level dotfiles. `bin/`: scripts on PATH.
 - `install.sh`, `tests/smoke.sh`, `assets/`.
 

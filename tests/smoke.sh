@@ -51,6 +51,8 @@ work_json=$(yq -p toml -o json config/mise/config.work.toml) || fail "config/mis
 global_personal_json=$(yq -p toml -o json config/mise/config.personal.toml) || fail "config/mise/config.personal.toml does not parse"
 root_work_json=$(yq -p toml -o json mise.work.toml) || fail "mise.work.toml does not parse"
 personal_json=$(yq -p toml -o json mise.personal.toml) || fail "mise.personal.toml does not parse"
+colima_template=home/.local/share/colima/_templates/default.yaml
+colima_json=$(yq -p yaml -o json "$colima_template") || fail "$colima_template does not parse"
 
 # The shell area's tracked TOML, each one optional and each parsed on its own
 # so a failure names the file. Absent is the JSON null, never an empty string:
@@ -125,11 +127,24 @@ for p in sorted([*pathlib.Path(".").glob("mise*.toml"), *pathlib.Path("config/mi
 # files.
 def bare_name(key):
     return key.split(":", 1)[-1]
-work_tools = {bare_name(k): k for k in work.get("tools", {})}
+# A registry short name such as lima names no owner, so it is the same tool as
+# any key whose last path segment it equals, aqua:lima-vm/lima included.
+def is_short(key):
+    return ":" not in key and "/" not in key
+def last_segment(key):
+    return bare_name(key).rsplit("/", 1)[-1]
+def work_twin(key):
+    for wk in work.get("tools", {}):
+        if bare_name(wk) == bare_name(key):
+            return wk
+        if (is_short(wk) or is_short(key)) and last_segment(wk) == last_segment(key):
+            return wk
+    return None
 for name, cfg in (("config/mise/config.toml", global_cfg), ("config/mise/config.personal.toml", global_personal)):
     for key in cfg.get("tools", {}):
-        if bare_name(key) in work_tools:
-            errs.append(f"{name} declares {key}, and {work_tools[bare_name(key)]} belongs only in config.work.toml")
+        twin = work_twin(key)
+        if twin:
+            errs.append(f"{name} declares {key}, and {twin} belongs only in config.work.toml")
 for name, cfg in (("config/mise/config.toml", global_cfg), ("config/mise/config.personal.toml", global_personal)):
     for key in set(cfg.get("env", {})) & set(work.get("env", {})):
         errs.append(f"{name} sets {key}, which belongs only in config.work.toml")
@@ -170,6 +185,7 @@ if "setup-claude" in work.get("tasks", {}):
 work_links = {
     "~/.config/mise/config.work.toml": "config/mise/config.work.toml",
     "~/.local/bin/docker-credential-glab": "home/.local/bin/docker-credential-glab",
+    "~/.local/share/colima/_templates/default.yaml": "home/.local/share/colima/_templates/default.yaml",
 }
 if root_work.get("dotfiles", {}) != work_links:
     errs.append(f"mise.work.toml's dotfiles are {root_work.get('dotfiles', {})}, not {work_links}, so the work overlay stops loading, loses a link or carries another Mac's")
@@ -363,6 +379,44 @@ for e in errs:
 sys.exit(1 if errs else 0)
 PY
 ok "manifest shape"
+
+# Colima's template, read as data because a personal Mac has no Colima to
+# run. The probe checks values and allows other keys, so it still passes if
+# the file becomes Colima's full default. It wants one mount, because the
+# default mounts all of $HOME writable.
+COLIMA_JSON=$colima_json SRC=$colima_template python3 - <<'PY' || fail "Colima template"
+import json, os, sys
+cfg = json.loads(os.environ["COLIMA_JSON"]) or {}
+src = os.environ["SRC"]
+errs = []
+want = {
+    "runtime": "docker", "vmType": "vz", "cpu": 4, "memory": 8, "disk": 60,
+    "rosetta": False, "autoActivate": False, "sshConfig": False,
+    "mounts": [{"location": "~/projects", "writable": True}],
+}
+for key, value in want.items():
+    if cfg.get(key) != value:
+        errs.append(f"{src}: {key} is {cfg.get(key)!r}, not {value!r}")
+# Docker's default bridge and pools can overlap routes the Mac already has.
+docker = cfg.get("docker") or {}
+if docker.get("bip") != "10.200.0.1/24":
+    errs.append(f"{src}: docker.bip is {docker.get('bip')!r}, not '10.200.0.1/24'")
+if docker.get("default-address-pools") != [{"base": "10.201.0.0/16", "size": 24}]:
+    errs.append(f"{src}: docker.default-address-pools is {docker.get('default-address-pools')!r}, not one 10.201.0.0/16 pool of /24s")
+provision = cfg.get("provision") or []
+if len(provision) != 1 or provision[0].get("mode") != "system":
+    errs.append(f"{src}: provision is {provision!r}, not one system entry")
+else:
+    lines = {l.strip() for l in str(provision[0].get("script", "")).splitlines()}
+    for cmd in ("timedatectl set-ntp false", "pro config set apt_news=false",
+                "systemctl disable --now ua-timer.timer"):
+        if cmd not in lines:
+            errs.append(f"{src}: the provision script does not run {cmd!r}")
+for e in errs:
+    print("  " + e, file=sys.stderr)
+sys.exit(1 if errs else 0)
+PY
+ok "Colima template"
 
 # HOME is a temp directory so nothing on this Mac is read as state.
 tmp_home=$(mktemp -d)
@@ -3614,6 +3668,8 @@ gitlab:gitlab-org/cli glab
 java java keytool
 rust cargo rustc rustup rustfmt cargo-clippy rust-analyzer
 protoc protoc
+colima colima
+lima limactl
 docker-compose docker-compose
 github:docker/buildx docker-buildx
 github:docker/docker-credential-helpers docker-credential-osxkeychain
@@ -3761,14 +3817,32 @@ if env.get("ASDF_DATA_DIR") != want:
     errs.append(f"ASDF_DATA_DIR renders to {env.get('ASDF_DATA_DIR')!r}, not {want!r}")
 if env.get("CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS") != "fallback":
     errs.append(f"CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS renders to {env.get('CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS')!r}, not 'fallback'")
+# A relative COLIMA_HOME would put the VM disk under whatever directory a
+# shell started in.
+colima = os.environ["WANT_HOME"] + "/.local/share/colima"
+if env.get("COLIMA_HOME") != colima:
+    errs.append(f"COLIMA_HOME renders to {env.get('COLIMA_HOME')!r}, not {colima!r}")
+if env.get("DOCKER_HOST") != f"unix://{colima}/default/docker.sock":
+    errs.append(f"DOCKER_HOST renders to {env.get('DOCKER_HOST')!r}, not unix://{colima}/default/docker.sock")
+if env.get("TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE") != "/var/run/docker.sock":
+    errs.append(f"TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE renders to {env.get('TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE')!r}, not '/var/run/docker.sock'")
 # prost-build finds protoc on PATH. PROTOC would pin one path for every repo.
-for k in ("NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "JAVA_TOOL_OPTIONS", "PROTOC"):
+# A global DOCKER_API_VERSION pins the CLI too, and TESTCONTAINERS_HOST_OVERRIDE
+# stays per repo with it.
+for k in ("NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "JAVA_TOOL_OPTIONS", "PROTOC",
+          "DOCKER_API_VERSION", "TESTCONTAINERS_HOST_OVERRIDE"):
     if k in env:
         errs.append(f"the work overlay sets {k}")
 for e in errs:
     print("  " + e, file=sys.stderr)
 sys.exit(1 if errs else 0)
 PY
+  # The work file loads only by name, so a personal Mac never aims docker at
+  # a VM it does not have.
+  personal_env=$(env_mise personal env --json) \
+    || fail "work env: mise env under personal failed: $(cat "$env_home/stderr")"
+  [ "$(printf '%s' "$personal_env" | jq 'has("DOCKER_HOST")')" = false ] \
+    || fail "work env: MISE_ENV=personal renders DOCKER_HOST"
   ok "work env"
 else
   printf 'skip work env: mise is not on PATH\n'

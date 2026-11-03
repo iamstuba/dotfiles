@@ -19,6 +19,11 @@ rust = { version = "latest", profile = "minimal", components = ["clippy", "rustf
 # prost-build finds protoc on PATH, so the overlay sets no PROTOC and installs
 # no cmake.
 protoc = "latest"
+# Colima runs the docker engine in a Lima VM. The user starts and stops it
+# by hand, so it runs only when asked. Lima on its own is the fallback
+# runtime.
+colima = "latest"
+lima = "latest"
 # Compose v2 is a docker CLI plugin. The postinstall reruns on every upgrade,
 # so the link in ~/.docker/cli-plugins always names the installed version.
 docker-compose = { version = "latest", postinstall = 'mkdir -p "$HOME/.docker/cli-plugins" && ln -sfn "$MISE_TOOL_INSTALL_PATH/docker-compose" "$HOME/.docker/cli-plugins/docker-compose"' }
@@ -56,6 +61,16 @@ ASDF_DATA_DIR = "{{ env.HOME }}/.local/share/mise"
 # a newer one only when none fits, so a local update keeps CI's older Rust
 # building.
 CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS = "fallback"
+# Keeps the VM disk out of ~/.config. While this directory does not exist,
+# Colima ignores the variable and uses ~/.config/colima.
+COLIMA_HOME = "{{ env.HOME }}/.local/share/colima"
+# docker and Testcontainers find the VM's socket here, so Colima needs no
+# Docker context. DOCKER_API_VERSION stays per repo, since it pins the CLI
+# too.
+DOCKER_HOST = "unix://{{ env.HOME }}/.local/share/colima/default/docker.sock"
+# Testcontainers mounts this socket into Ryuk and its other helper
+# containers, and the Mac's socket path does not exist inside the VM.
+TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE = "/var/run/docker.sock"
 
 [settings]
 # This list replaces config.toml's, so node repeats. mise sets

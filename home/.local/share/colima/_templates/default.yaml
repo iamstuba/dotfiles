@@ -1,0 +1,41 @@
+# Colima reads this only when it creates a profile, so a change here reaches
+# an existing VM only after `colima delete` and a fresh `colima start`.
+
+runtime: docker
+vmType: vz
+cpu: 4
+memory: 8
+# In GiB. Colima can grow a disk later but never shrink it, so this starts
+# below Colima's 100.
+disk: 60
+
+# Colima's QEMU binfmt runs amd64 images, so the VM needs no Rosetta.
+rosetta: false
+
+# DOCKER_HOST reaches the socket, so Colima writes no context into
+# ~/.docker/config.json and no include into the tracked ~/.ssh/config.
+autoActivate: false
+sshConfig: false
+
+# The default mounts all of $HOME writable. Containers need only the clones.
+mounts:
+  - location: ~/projects
+    writable: true
+
+# Colima writes this to the guest's /etc/docker/daemon.json as is. Docker's
+# default 172.17.0.0/16 can overlap routes the Mac already has.
+docker:
+  bip: 10.200.0.1/24
+  default-address-pools:
+    - base: 10.201.0.0/16
+      size: 24
+
+# Colima runs this as root on every start, so each line must be safe to
+# repeat. It stops the guest from calling Canonical's time, news and Ubuntu
+# Pro servers on its own.
+provision:
+  - mode: system
+    script: |
+      timedatectl set-ntp false
+      pro config set apt_news=false
+      systemctl disable --now ua-timer.timer

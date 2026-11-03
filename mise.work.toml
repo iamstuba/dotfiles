@@ -5,11 +5,14 @@
 # packages stay in config/mise/config.work.toml.
 
 [dotfiles]
-# The global overlay itself, and glab's docker credential helper. glab writes
-# its own copy into the install dir of the glab version that ran, which the
-# next upgrade drops; this one stays.
+# The global overlay itself, glab's docker credential helper and Colima's
+# template. glab writes its own copy of the helper into the install dir of the
+# glab version that ran, which the next upgrade drops; this one stays. The
+# template is a file link, because a linked directory would put the VM disk
+# in the clone.
 "~/.config/mise/config.work.toml" = "config/mise/config.work.toml"
 "~/.local/bin/docker-credential-glab" = "home/.local/bin/docker-credential-glab"
+"~/.local/share/colima/_templates/default.yaml" = "home/.local/share/colima/_templates/default.yaml"
 
 [bootstrap.packages]
 # Not wanted on the work Mac. Here rather than in config/mise/config.work.toml
