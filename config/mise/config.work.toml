@@ -35,11 +35,22 @@ docker-compose = { version = "latest", postinstall = 'mkdir -p "$HOME/.docker/cl
 # login keychain, not base64 in ~/.docker/config.json. The release also
 # carries a pass helper for macOS, so matching picks this one.
 "github:docker/docker-credential-helpers" = { version = "latest", bin = "docker-credential-osxkeychain", matching = "osxkeychain" }
+# mise checks a sha256 for kubectl, k6 and vault before it unpacks them.
+kubectl = "latest"
+k6 = "latest"
+# HashiCorp's vault, the one the work repos run.
+vault = "latest"
 
 [bootstrap.packages]
 # Homebrew builds the docker CLI from source, and mise's docker-cli takes its
 # first download on trust.
 "brew:docker" = "latest"
+# mise's aws-cli unpacks a .pkg that has no checksum, and mise never checks
+# its signature. A codesign check after the install would cover one
+# executable, not the Python files beside it. Homebrew pins the bottle's
+# sha256. The cost is a Homebrew Python, and update:apps upgrades it, not
+# update:tools.
+"brew:awscli" = "latest"
 
 [env]
 # Telemetry doubles every request the bar's chip makes, and reports usage.
@@ -50,6 +61,16 @@ GLAB_CONFIG_DIR = "{{ env.HOME }}/.config/glab-cli"
 # aws configure otherwise offers to install skills and an MCP server into
 # coding agents' config dirs.
 AWS_CLI_AGENT_TOOLKIT_HINT_DISABLED = "true"
+# Every request's user agent otherwise carries an ID derived from a random
+# host UUID the CLI keeps in ~/.aws/cli/cache.
+AWS_CLI_SESSION_ID_DISABLED = "true"
+# The AWS CLI reads this file in place of its own CA store, so it names the
+# whole bundle and not extra.pem alone.
+AWS_CA_BUNDLE = "{{ env.HOME }}/.local/share/corporate-ca/bundle.pem"
+# k6 otherwise reports usage to Grafana after every k6 run, and sends a
+# script's unknown k6/x/ imports to Grafana's build service.
+K6_NO_USAGE_REPORT = "true"
+K6_AUTO_EXTENSION_RESOLUTION = "false"
 # Node reads the Keychain itself, so a CA rotation reaches it with no file to
 # refresh. NODE_EXTRA_CA_CERTS stays out, and a repo on a Node too old for
 # this sets it in its own mise.local.toml.

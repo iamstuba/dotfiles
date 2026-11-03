@@ -3639,9 +3639,11 @@ tools_map() {
   # carries one binary and it is named yq. glab was installed the same way on
   # 2026-10-27 with mise 2026.10.15, and its one binary is glab. docker-compose,
   # buildx and the osxkeychain helper were installed the same way on 2026-11-03
-  # with mise 2026.10.20, each one binary under the name below. java, rust and
-  # protoc were installed the same way on 2026-11-03 with mise 2026.10.20. rust
-  # links its install dir to ~/.cargo/bin, which holds rustup's proxies.
+  # with mise 2026.10.20, each one binary under the name below. java, rust,
+  # protoc, kubectl, k6 and vault were installed the same way on 2026-11-03
+  # with mise 2026.10.20. rust links its install dir to ~/.cargo/bin, which
+  # holds rustup's proxies. kubectl, k6 and vault are one binary each, named
+  # after the key.
   #
   # An exception carries `-` in place of its commands and a reason after a #.
   # There are none. If this list ever reaches two or three, the rule that
@@ -3673,6 +3675,9 @@ lima limactl
 docker-compose docker-compose
 github:docker/buildx docker-buildx
 github:docker/docker-credential-helpers docker-credential-osxkeychain
+kubectl kubectl
+k6 k6
+vault vault
 aqua:neovim/neovim nvim
 stylua stylua
 lua-language-server lua-language-server
@@ -3826,6 +3831,15 @@ if env.get("DOCKER_HOST") != f"unix://{colima}/default/docker.sock":
     errs.append(f"DOCKER_HOST renders to {env.get('DOCKER_HOST')!r}, not unix://{colima}/default/docker.sock")
 if env.get("TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE") != "/var/run/docker.sock":
     errs.append(f"TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE renders to {env.get('TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE')!r}, not '/var/run/docker.sock'")
+# The AWS CLI reads this file in place of its own CA store, so extra.pem
+# alone would fail every endpoint that a system root signs.
+bundle = os.environ["WANT_HOME"] + "/.local/share/corporate-ca/bundle.pem"
+if env.get("AWS_CA_BUNDLE") != bundle:
+    errs.append(f"AWS_CA_BUNDLE renders to {env.get('AWS_CA_BUNDLE')!r}, not {bundle!r}")
+for k, value in (("AWS_CLI_SESSION_ID_DISABLED", "true"), ("K6_NO_USAGE_REPORT", "true"),
+                 ("K6_AUTO_EXTENSION_RESOLUTION", "false")):
+    if env.get(k) != value:
+        errs.append(f"{k} renders to {env.get(k)!r}, not {value!r}")
 # prost-build finds protoc on PATH. PROTOC would pin one path for every repo.
 # A global DOCKER_API_VERSION pins the CLI too, and TESTCONTAINERS_HOST_OVERRIDE
 # stays per repo with it.
