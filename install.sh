@@ -193,6 +193,13 @@ fi
 for f in mise.toml mise.work.toml mise.personal.toml config/mise/config.toml config/mise/config.work.toml config/mise/config.personal.toml; do
   run "$mise" trust "$DOTFILES/$f"
 done
+# Colima reads COLIMA_HOME only when the directory exists. The export must
+# precede the tools phase, so the first JDK install gets the keychain's CAs,
+# and must precede the VM's first start, which needs Lima's override.
+if [ "$machine_env" = work ]; then
+  run mkdir -p "$HOME/.local/share/colima"
+  run env COLIMA_HOME="$HOME/.local/share/colima" sh "$DOTFILES/bin/keychain-ca" export
+fi
 run "$mise" -C "$DOTFILES" bootstrap --yes
 
 run "$mise" -C "$DOTFILES" run setup-git

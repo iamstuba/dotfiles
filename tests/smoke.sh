@@ -931,6 +931,17 @@ if [ "$1" = x ]; then
   exec "$@"
 fi
 EOF
+# Copied into each fake clone, since the real export reads this Mac's
+# keychain. It logs whether COLIMA_HOME already existed, since the export
+# writes Lima's override only then. Kept off PATH, so a bare keychain-ca
+# call fails here as it would on a real Mac.
+mkdir -p "$sg/clone-stubs"
+cat >"$sg/clone-stubs/keychain-ca" <<'EOF'
+#!/bin/sh
+state=missing
+[ -d "${COLIMA_HOME:-/nonexistent}" ] && state=exists
+echo "keychain-ca $* COLIMA_HOME=${COLIMA_HOME-unset} $state" >>"$SG_LOG"
+EOF
 chmod +x "$sg"/install-stubs/*
 
 sg_case() { # $1: case name, $2: the env miserc names, or nothing for no miserc
@@ -954,8 +965,9 @@ sg_install() { # $1: case name, then NAME=value pairs
   shift
   : >"$c/log"
   : >"$c/env-log"
-  mkdir -p "$c/home/.local/bin" "$c/clone/.git" "$c/clone/.scratch/.git"
+  mkdir -p "$c/home/.local/bin" "$c/clone/.git" "$c/clone/.scratch/.git" "$c/clone/bin"
   cp "$sg/install-stubs/mise" "$c/home/.local/bin/mise"
+  cp "$sg/clone-stubs/keychain-ca" "$c/clone/bin/keychain-ca"
   # The clone and the scratch clone already exist, so the installer clones
   # nothing. The Command Line Tools check reads the real /Library, and
   # smoke cannot run on a Mac without them.
@@ -963,10 +975,13 @@ sg_install() { # $1: case name, then NAME=value pairs
     SG_ENV_LOG="$c/env-log" SG_STATE="$c/state" DOTFILES="$c/clone" GIT_NAME='Test Person' GIT_PROFILES= "$@" \
     sh "$root/install.sh" </dev/null >"$c/out" 2>&1)
 }
-sg_install_tail() { # $1: case name; what every installer run ends with
+sg_install_tail() { # $1: case name, $2: work or personal; what every installer run ends with
   printf 'mise trust %s\n' "$sg/$1/clone/mise.toml" "$sg/$1/clone/mise.work.toml" \
     "$sg/$1/clone/mise.personal.toml" "$sg/$1/clone/config/mise/config.toml" \
     "$sg/$1/clone/config/mise/config.work.toml" "$sg/$1/clone/config/mise/config.personal.toml"
+  if [ "$2" = work ]; then
+    printf 'keychain-ca export COLIMA_HOME=%s exists\n' "$sg/$1/home/.local/share/colima"
+  fi
   printf 'mise -C %s bootstrap --yes\nmise -C %s run setup-git\n' "$sg/$1/clone" "$sg/$1/clone"
 }
 # Every stub mise call, the first one included, ran under the manifest's
@@ -1195,8 +1210,9 @@ mise x github-cli -- gh auth login -w -p ssh --skip-ssh-key -s admin:public_key,
 gh auth login -w -p ssh --skip-ssh-key -s admin:public_key,admin:ssh_signing_key
 ssh-keygen -t ed25519 -C personal@example.com -f $h/.ssh/id_ed25519_github
 ssh-add --apple-use-keychain $h/.ssh/id_ed25519_github
-$(sg_install_tail install-personal)"
+$(sg_install_tail install-personal personal)"
 [ -e "$h/.ssh/id_ed25519_gitlab" ] && fail "install.sh personal made a GitLab key"
+[ -e "$h/.local/share/colima" ] && fail "install.sh personal made ~/.local/share/colima"
 sg_file_is install-personal .config/mise/miserc.toml 'env = ["personal"]'
 sg_install_env_ok install-personal
 ok "install.sh, a personal Mac"
@@ -1221,9 +1237,10 @@ ssh-keygen -t ed25519 -C work@example.com -f $h/.ssh/id_ed25519_github
 ssh-add --apple-use-keychain $h/.ssh/id_ed25519_github
 ssh-keygen -t ed25519 -C work@example.com -f $h/.ssh/id_ed25519_gitlab
 ssh-add --apple-use-keychain $h/.ssh/id_ed25519_gitlab
-$(sg_install_tail install-work)"
+$(sg_install_tail install-work work)"
 sg_file_is install-work .config/mise/miserc.toml 'env = ["work"]'
 sg_install_env_ok install-work
+[ -d "$h/.local/share/colima" ] || fail "install.sh work made no ~/.local/share/colima"
 # What the stub mise's `run setup-git` stands for.
 set -- install-work GIT_EMAIL=work@example.com GIT_PROFILES=
 sg_run "$@" sh "$root/bin/setup-git" || fail "setup-git install-work exited nonzero: $(cat "$sg/install-work/out")"
@@ -1248,8 +1265,9 @@ mise x github-cli -- gh auth status
 gh auth status
 mise x gitlab:gitlab-org/cli -- glab config get user --host gitlab.com
 glab config get user --host gitlab.com
-$(sg_install_tail install-work)"
+$(sg_install_tail install-work work)"
 [ "$(sg_snap install-work)" = "$before" ] || fail "install.sh work rerun changed files"
+[ -d "$h/.local/share/colima" ] || fail "install.sh work rerun removed ~/.local/share/colima"
 sg_rerun_quiet "$@"
 grep -qF "$sg_note" "$sg/install-work/out" && fail "setup-git install-work printed the note on a rerun"
 ok "install.sh and setup-git, the work Mac"
@@ -1286,6 +1304,7 @@ echo "$out" | grep -q 'run setup-git' || fail "install: setup-git command missin
 echo "$out" | grep -q 'env = \["work"\]' && fail "install: wrote the work overlay on a personal answer"
 echo "$out" | grep -q 'env = \["personal"\]' || fail "install: personal answer did not write miserc.toml"
 echo "$out" | grep -qE 'glab|gitlab' && fail "install: a personal dry run names glab or the GitLab key"
+echo "$out" | grep -qE 'keychain-ca|colima' && fail "install: a personal dry run exports the keychain's CAs or makes COLIMA_HOME"
 out=$(HOME=$tmp_home DOTFILES=$root DOTFILES_WORK=1 GIT_NAME=Test GIT_EMAIL=test@example.com GIT_PROFILES= \
   sh install.sh --dry-run 2>&1) || fail "install.sh --dry-run (work)"
 hint='mise x claude -- claude'
@@ -1301,6 +1320,9 @@ echo "$out" | grep -qF 'glab auth login --hostname gitlab.com --web -g ssh' || f
 echo "$out" | grep -qF "ssh-keygen -t ed25519 -C test@example.com -f $tmp_home/.ssh/id_ed25519_gitlab" \
   || fail "install: work dry run prints no GitLab key"
 echo "$out" | grep -q 'env = \["personal"\]' && fail "install: wrote the personal overlay on a work answer"
+echo "$out" | grep -qxF "+ mkdir -p $tmp_home/.local/share/colima" || fail "install: work dry run makes no COLIMA_HOME"
+echo "$out" | grep -qxF "+ env COLIMA_HOME=$tmp_home/.local/share/colima sh $root/bin/keychain-ca export" \
+  || fail "install: work dry run prints no keychain-ca export"
 # The zsh probe below grants the same trust to its own temp HOME, so without
 # this the probe would stay green while a bootstrapped Mac went back to mise
 # warning on every shell start. Only the work answer reaches this far.
