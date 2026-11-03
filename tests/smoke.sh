@@ -87,8 +87,8 @@ if "tools" in global_cfg and next(iter(global_cfg["tools"])) != "node":
     errs.append("node must be the first tool so npm: tools run on it")
 if "tools" in root:
     errs.append("repo-root file carries tools; they are only on PATH inside the clone")
-if set(work) - {"tools", "bootstrap", "env", "hooks", "tasks"}:
-    errs.append(f"overlay carries unexpected tables: {sorted(set(work) - {'tools', 'bootstrap', 'env', 'hooks', 'tasks'})}")
+if set(work) - {"tools", "bootstrap", "env", "settings", "hooks", "tasks"}:
+    errs.append(f"overlay carries unexpected tables: {sorted(set(work) - {'tools', 'bootstrap', 'env', 'settings', 'hooks', 'tasks'})}")
 # The JDK import is the one hook. Any other runs after every install of
 # anything, anywhere, on the work Mac.
 if set(work.get("hooks", {})) - {"postinstall"}:
@@ -130,6 +130,9 @@ for name, cfg in (("config/mise/config.toml", global_cfg), ("config/mise/config.
     for key in cfg.get("tools", {}):
         if bare_name(key) in work_tools:
             errs.append(f"{name} declares {key}, and {work_tools[bare_name(key)]} belongs only in config.work.toml")
+for name, cfg in (("config/mise/config.toml", global_cfg), ("config/mise/config.personal.toml", global_personal)):
+    for key in set(cfg.get("env", {})) & set(work.get("env", {})):
+        errs.append(f"{name} sets {key}, which belongs only in config.work.toml")
 work_pkgs = {bare_name(k): k for k in work.get("bootstrap", {}).get("packages", {})}
 for name, cfg in (("mise.toml", root), ("mise.personal.toml", personal)):
     for key in cfg.get("bootstrap", {}).get("packages", {}):
@@ -3582,7 +3585,9 @@ tools_map() {
   # carries one binary and it is named yq. glab was installed the same way on
   # 2026-10-27 with mise 2026.10.15, and its one binary is glab. docker-compose,
   # buildx and the osxkeychain helper were installed the same way on 2026-11-03
-  # with mise 2026.10.20, each one binary under the name below.
+  # with mise 2026.10.20, each one binary under the name below. java, rust and
+  # protoc were installed the same way on 2026-11-03 with mise 2026.10.20. rust
+  # links its install dir to ~/.cargo/bin, which holds rustup's proxies.
   #
   # An exception carries `-` in place of its commands and a reason after a #.
   # There are none. If this list ever reaches two or three, the rule that
@@ -3606,6 +3611,9 @@ delta delta
 lazygit lazygit
 github-cli gh
 gitlab:gitlab-org/cli glab
+java java keytool
+rust cargo rustc rustup rustfmt cargo-clippy rust-analyzer
+protoc protoc
 docker-compose docker-compose
 github:docker/buildx docker-buildx
 github:docker/docker-credential-helpers docker-credential-osxkeychain
@@ -3677,12 +3685,18 @@ $personal_keys"
       continue
     fi
     for cmd in $cmds; do
-      if command -v "$cmd" >/dev/null 2>&1; then
-        asserted=$((asserted + 1))
-      else
-        missing="$missing
-  $key declares $cmd, which is not on PATH"
-      fi
+      # macOS ships java and keytool as stubs in /usr/bin that only offer a
+      # JDK download, so a command found in the OS's own dirs does not count.
+      found=$(command -v "$cmd" 2>/dev/null) || found=
+      case $found in
+        '')
+          missing="$missing
+  $key declares $cmd, which is not on PATH" ;;
+        /usr/bin/* | /bin/* | /usr/sbin/* | /sbin/*)
+          missing="$missing
+  $key declares $cmd, and only the OS's $found is on PATH" ;;
+        *) asserted=$((asserted + 1)) ;;
+      esac
     done
   done
   [ -z "$missing" ] || fail "tools did not install:$missing"
@@ -3721,7 +3735,13 @@ if command -v mise >/dev/null 2>&1; then
     || fail "work env: update:tools does not run ca:refresh after it: $env_tools_work"
   [ "$(printf '%s\n%s\n' "$env_tools_work" "$env_tools_base" | jq -s -c '.[0].run == .[1].run and (.[0].run | length > 0)')" = true ] \
     || fail "work env: under work, update:tools' run is not config.toml's: $env_tools_work"
-  WORK_ENV=$work_env WANT_DIR=$env_home/.config/glab-cli python3 - <<'PY' || fail "work env"
+  # The overlay's list replaces config.toml's, so a lost node here stops node
+  # reading .nvmrc on the work Mac only.
+  env_idiomatic=$(env_mise work settings get idiomatic_version_file_enable_tools) \
+    || fail "work env: settings get under work failed: $(cat "$env_home/stderr")"
+  [ "$(printf '%s' "$env_idiomatic" | jq -c 'sort')" = '["node","rust"]' ] \
+    || fail "work env: idiomatic_version_file_enable_tools is $env_idiomatic, not node and rust"
+  WORK_ENV=$work_env WANT_DIR=$env_home/.config/glab-cli WANT_HOME=$env_home python3 - <<'PY' || fail "work env"
 import json, os, sys
 env = json.loads(os.environ["WORK_ENV"])
 errs = []
@@ -3735,7 +3755,14 @@ if env.get("AWS_CLI_AGENT_TOOLKIT_HINT_DISABLED") != "true":
 # makes Apple's curl exit 77, and a JDK gets its CAs in its own cacerts.
 if env.get("NODE_USE_SYSTEM_CA") != "1":
     errs.append(f"NODE_USE_SYSTEM_CA renders to {env.get('NODE_USE_SYSTEM_CA')!r}, not '1'")
-for k in ("NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "JAVA_TOOL_OPTIONS"):
+# Gradle finds mise's JDKs through asdf's data dir.
+want = os.environ["WANT_HOME"] + "/.local/share/mise"
+if env.get("ASDF_DATA_DIR") != want:
+    errs.append(f"ASDF_DATA_DIR renders to {env.get('ASDF_DATA_DIR')!r}, not {want!r}")
+if env.get("CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS") != "fallback":
+    errs.append(f"CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS renders to {env.get('CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS')!r}, not 'fallback'")
+# prost-build finds protoc on PATH. PROTOC would pin one path for every repo.
+for k in ("NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "JAVA_TOOL_OPTIONS", "PROTOC"):
     if k in env:
         errs.append(f"the work overlay sets {k}")
 for e in errs:

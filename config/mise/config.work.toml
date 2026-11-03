@@ -2,14 +2,23 @@
 # includes "work". The installer writes ~/.config/mise/miserc.toml with
 # env = ["work"] when told to; that file is never tracked. MISE_ENV
 # cannot live in a mise.toml because it decides which mise.toml files load.
-# It holds the work Mac's tools, env, JDK postinstall and tasks, and the
-# packages it adds.
+# It holds the work Mac's tools, env, settings, JDK postinstall and tasks, and
+# the packages it adds.
 # Packages it turns off are in the repo-root mise.work.toml.
 
 [tools]
 # Only the work Mac uses gitlab.com, so glab lives here. brew:glab is the
 # fallback; aqua's entry lists no versions and carries no checksum.
 "gitlab:gitlab-org/cli" = "latest"
+# Temurin is the JDK the work repos' images and CI build on. The [hooks]
+# postinstall below imports the keychain's CAs into every JDK mise installs.
+java = "temurin-25"
+# The minimal profile leaves out the 920 MB docs component. The postinstall
+# stops rustup checking for its own updates in the background.
+rust = { version = "latest", profile = "minimal", components = ["clippy", "rustfmt", "rust-analyzer"], postinstall = "rustup set auto-self-update disable" }
+# prost-build finds protoc on PATH, so the overlay sets no PROTOC and installs
+# no cmake.
+protoc = "latest"
 # Compose v2 is a docker CLI plugin. The postinstall reruns on every upgrade,
 # so the link in ~/.docker/cli-plugins always names the installed version.
 docker-compose = { version = "latest", postinstall = 'mkdir -p "$HOME/.docker/cli-plugins" && ln -sfn "$MISE_TOOL_INSTALL_PATH/docker-compose" "$HOME/.docker/cli-plugins/docker-compose"' }
@@ -40,6 +49,20 @@ AWS_CLI_AGENT_TOOLKIT_HINT_DISABLED = "true"
 # refresh. NODE_EXTRA_CA_CERTS stays out, and a repo on a Node too old for
 # this sets it in its own mise.local.toml.
 NODE_USE_SYSTEM_CA = "1"
+# Gradle's toolchain lookup reads asdf's data dir, which is where mise keeps
+# its JDKs.
+ASDF_DATA_DIR = "{{ env.HOME }}/.local/share/mise"
+# cargo update picks crates whose rust-version the repo's toolchain meets, and
+# a newer one only when none fits, so a local update keeps CI's older Rust
+# building.
+CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS = "fallback"
+
+[settings]
+# This list replaces config.toml's, so node repeats. mise sets
+# RUSTUP_TOOLCHAIN, which outranks a repo's rust-toolchain.toml unless mise
+# reads that file itself, so rust is on the list. java stays out, because a
+# bare 21 in .java-version would install a duplicate JDK.
+idiomatic_version_file_enable_tools = ["node", "rust"]
 
 [hooks]
 # Global, so it fires for every JDK mise installs anywhere: a repo's pin, a

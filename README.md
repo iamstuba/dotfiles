@@ -112,7 +112,7 @@ file does not exist, and `mise run check` warns when it finds one.
 
 - `mise.toml`: packages, symlink map, macOS defaults, hooks, repo-bound tasks.
 - `config/mise/config.toml`: tools, settings, update tasks. Symlinked to `~/.config/mise/`.
-- `config/mise/config.work.toml`: loaded when `MISE_ENV` includes `work`. It holds the work-only tools, such as glab and the docker plugins, and the packages work adds, such as the docker CLI. It also holds their env, the JDK CA postinstall and `ca:refresh`.
+- `config/mise/config.work.toml`: loaded when `MISE_ENV` includes `work`. It holds the work-only tools, such as glab and the docker plugins, and the packages work adds, such as the docker CLI. It also holds their env and settings, the JDK CA postinstall and `ca:refresh`.
 - `config/mise/config.personal.toml`: pi, herdr and their tasks, loaded when `MISE_ENV` includes `personal`.
 - `mise.work.toml`: packages turned off at work, the work-only links such as glab's docker credential helper, and the task that merges the work Claude Code settings. `mise.personal.toml`: the dotfiles, pi's and herdr's among them, the bundled app removal and the LibreWolf policies a work Mac must not get. Each links its own global overlay. The installer sets `MISE_ENV` to exactly one of `work` and `personal`.
 - `config/`: mirrors `~/.config`. `home/`: top-level dotfiles. `bin/`: scripts on PATH.
