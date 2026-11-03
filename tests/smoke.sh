@@ -16,7 +16,7 @@ mise_ceiling=$(dirname "$root")
 fail() { printf 'FAIL %s\n' "$*" >&2; exit 1; }
 ok() { printf 'ok   %s\n' "$*"; }
 
-for f in install.sh tests/smoke.sh bin/*; do
+for f in install.sh tests/smoke.sh bin/* home/.local/bin/*; do
   [ -f "$f" ] || continue
   case "$(head -n 1 "$f")" in
     *bash*) bash -n "$f" || fail "syntax $f" ;;
@@ -93,6 +93,13 @@ if set(work) - {"tools", "bootstrap", "env", "hooks", "tasks"}:
 # anything, anywhere, on the work Mac.
 if set(work.get("hooks", {})) - {"postinstall"}:
     errs.append(f"work overlay's hooks are {sorted(work['hooks'])}, not only postinstall")
+# Bootstrap reads added packages from here. An absent mark here does nothing,
+# because mise.toml's declaration wins, so those go in mise.work.toml.
+if set(work.get("bootstrap", {})) - {"packages"}:
+    errs.append(f"config.work.toml's bootstrap carries {sorted(work['bootstrap'])}, not only packages")
+for pkg, spec in work.get("bootstrap", {}).get("packages", {}).items():
+    if isinstance(spec, dict) and spec.get("state") == "absent":
+        errs.append(f"config.work.toml marks {pkg} absent, which mise.toml's declaration overrides; it belongs in mise.work.toml")
 # A block named after a config.toml task may carry depends_post and nothing
 # else, for the reason config.personal.toml's blocks may not.
 for name, task in work.get("tasks", {}).items():
@@ -112,6 +119,34 @@ if work.get("env", {}).get("GLAB_CONFIG_DIR") != "{{ env.HOME }}/.config/glab-cl
 for p in sorted([*pathlib.Path(".").glob("mise*.toml"), *pathlib.Path("config/mise").glob("*.toml")]):
     if p != pathlib.Path("config/mise/config.work.toml") and "gitlab:" in p.read_text():
         errs.append(f"{p} names gitlab:, which belongs only in config/mise/config.work.toml")
+# Every work tool and package, by what follows its backend prefix, so the same
+# repo under another backend is caught too. The repo's owner stays in, so
+# gitlab-org/cli does not claim every other */cli. A personal Mac loads these
+# files.
+def bare_name(key):
+    return key.split(":", 1)[-1]
+work_tools = {bare_name(k): k for k in work.get("tools", {})}
+for name, cfg in (("config/mise/config.toml", global_cfg), ("config/mise/config.personal.toml", global_personal)):
+    for key in cfg.get("tools", {}):
+        if bare_name(key) in work_tools:
+            errs.append(f"{name} declares {key}, and {work_tools[bare_name(key)]} belongs only in config.work.toml")
+work_pkgs = {bare_name(k): k for k in work.get("bootstrap", {}).get("packages", {})}
+for name, cfg in (("mise.toml", root), ("mise.personal.toml", personal)):
+    for key in cfg.get("bootstrap", {}).get("packages", {}):
+        if bare_name(key) in work_pkgs:
+            errs.append(f"{name} declares {key}, and {work_pkgs[bare_name(key)]} belongs only in config.work.toml")
+# docker writes ~/.docker/config.json itself, tokens and credHelpers included,
+# so nothing links into ~/.docker. A credsStore from the osxkeychain helper
+# covers ECR's fallback login, so the ECR helper stays out.
+for name, cfg in (("mise.toml", root), ("mise.work.toml", root_work), ("mise.personal.toml", personal)):
+    for target in cfg.get("dotfiles", {}):
+        if target == "~/.docker" or target.startswith("~/.docker/"):
+            errs.append(f"{name} links {target}, so docker's own tokens and credHelpers would land in the clone")
+for name, cfg in (("config/mise/config.toml", global_cfg), ("config/mise/config.work.toml", work),
+                  ("config/mise/config.personal.toml", global_personal)):
+    for key in cfg.get("tools", {}):
+        if "ecr-credential-helper" in key or "ecr-login" in key:
+            errs.append(f"{name} declares {key}; docker login's ECR fallback uses the keychain helper")
 if set(root_work) - {"bootstrap", "dotfiles", "tasks"}:
     errs.append(f"repo-root overlay carries more than packages, its link and tasks: {sorted(set(root_work) - {'bootstrap', 'dotfiles', 'tasks'})}")
 # A block named after a mise.toml task may carry depends_post and nothing
@@ -126,10 +161,15 @@ for name, task in root_work.get("tasks", {}).items():
 # only from the same half of the manifest, so one here would do nothing.
 if "setup-claude" in work.get("tasks", {}):
     errs.append("config/mise/config.work.toml defines setup-claude, which layers onto nothing; it belongs in mise.work.toml")
-# Its one row links the global overlay. Any other row belongs in mise.toml or
-# mise.personal.toml, and without this one the work overlay stops loading.
-if set(root_work.get("dotfiles", {})) != {"~/.config/mise/config.work.toml"}:
-    errs.append(f"mise.work.toml's dotfiles are {sorted(root_work.get('dotfiles', {}))}, not just config.work.toml, so the work overlay stops loading or carries another Mac's link")
+# One row links the global overlay, and without it the work overlay stops
+# loading. The rest are work-only files. Any other row belongs in mise.toml or
+# mise.personal.toml.
+work_links = {
+    "~/.config/mise/config.work.toml": "config/mise/config.work.toml",
+    "~/.local/bin/docker-credential-glab": "home/.local/bin/docker-credential-glab",
+}
+if root_work.get("dotfiles", {}) != work_links:
+    errs.append(f"mise.work.toml's dotfiles are {root_work.get('dotfiles', {})}, not {work_links}, so the work overlay stops loading, loses a link or carries another Mac's")
 for target in root_work.get("dotfiles", {}):
     if target in root.get("dotfiles", {}):
         errs.append(f"{target} is in both mise.toml and mise.work.toml, so personal gets it too")
@@ -715,6 +755,50 @@ kj_run "$kj_refresh" '' MISE_DATA_DIR="$kj/data" || fail "ca:refresh exited nonz
   || fail "ca:refresh did not import the $kca_extra CAs export found: $(cat "$kj/log")"
 [ "$(wc -l <"$kj/log" | tr -d ' ')" -eq $((kca_extra + 1)) ] || fail "ca:refresh called keytool for more than b: $(cat "$kj/log")"
 ok "keychain-ca jdk"
+
+# Each docker plugin's postinstall, run as mise runs it against fake install
+# dirs. docker finds a plugin only by its name in ~/.docker/cli-plugins, and
+# the second version stands in for an upgrade, which must move the link.
+dp=$tmp_home/docker-plugins
+for dp_pair in docker-compose=docker-compose github:docker/buildx=docker-buildx; do
+  dp_key=${dp_pair%=*} dp_bin=${dp_pair#*=}
+  dp_cmd=$(printf '%s' "$work_json" | jq -r --arg k "$dp_key" '.tools[$k].postinstall // ""') \
+    || fail "docker plugins: could not read $dp_key's postinstall"
+  [ -n "$dp_cmd" ] || fail "docker plugins: $dp_key has no postinstall, so docker never finds $dp_bin"
+  for dp_v in 1.0.0 1.0.1; do
+    dp_path=$dp/installs/$dp_bin/$dp_v
+    mkdir -p "$dp_path"
+    : >"$dp_path/$dp_bin"
+    (cd "$tmp_home" && env -i PATH=/usr/bin:/bin HOME="$dp/home" MISE_TOOL_INSTALL_PATH="$dp_path" /bin/sh -c "$dp_cmd") \
+      || fail "docker plugins: $dp_key's postinstall failed on $dp_v"
+    dp_link=$dp/home/.docker/cli-plugins/$dp_bin
+    [ -L "$dp_link" ] && [ "$(readlink "$dp_link")" = "$dp_path/$dp_bin" ] \
+      || fail "docker plugins: after $dp_key $dp_v, $dp_link is not a link to its $dp_bin: $(ls -l "$dp_link" 2>&1)"
+  done
+done
+[ "$(ls "$dp/home/.docker")" = cli-plugins ] \
+  || fail "docker plugins: the postinstalls wrote more than cli-plugins into ~/.docker: $(ls "$dp/home/.docker")"
+ok "docker plugins"
+
+# glab's docker credential helper hands docker's verb, its stdin and glab's exit status through
+# unchanged, which is all docker's credential helper protocol needs.
+gs=$tmp_home/glab-shim
+mkdir -p "$gs"
+cat >"$gs/glab" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >"$GS_LOG"
+cat >>"$GS_LOG"
+exit "${GS_EXIT:-0}"
+EOF
+chmod +x "$gs/glab"
+printf 'registry.gitlab.com\n' | GS_LOG=$gs/log PATH="$gs:/usr/bin:/bin" home/.local/bin/docker-credential-glab get \
+  || fail "docker-credential-glab exited nonzero, so docker gets no registry.gitlab.com login"
+[ "$(cat "$gs/log")" = "auth docker-helper get
+registry.gitlab.com" ] || fail "docker-credential-glab called glab as: $(cat "$gs/log")"
+gs_status=0
+GS_LOG=$gs/log GS_EXIT=3 PATH="$gs:/usr/bin:/bin" home/.local/bin/docker-credential-glab get </dev/null || gs_status=$?
+[ "$gs_status" -eq 3 ] || fail "docker-credential-glab exited $gs_status when glab exited 3, so docker misreads a failed lookup"
+ok "docker-credential-glab"
 
 # setup-git and install.sh, run for real in a temp HOME. The forge CLIs,
 # ssh-keygen and ssh-add are stubs that log their arguments, so nothing
@@ -3496,7 +3580,9 @@ tools_map() {
   # pnpx and pnx and node's corepack, npm and npx are left out. yq joined
   # [tools] after that run, with the parser swap above; its release archive
   # carries one binary and it is named yq. glab was installed the same way on
-  # 2026-10-27 with mise 2026.10.15, and its one binary is glab.
+  # 2026-10-27 with mise 2026.10.15, and its one binary is glab. docker-compose,
+  # buildx and the osxkeychain helper were installed the same way on 2026-11-03
+  # with mise 2026.10.20, each one binary under the name below.
   #
   # An exception carries `-` in place of its commands and a reason after a #.
   # There are none. If this list ever reaches two or three, the rule that
@@ -3520,6 +3606,9 @@ delta delta
 lazygit lazygit
 github-cli gh
 gitlab:gitlab-org/cli glab
+docker-compose docker-compose
+github:docker/buildx docker-buildx
+github:docker/docker-credential-helpers docker-credential-osxkeychain
 aqua:neovim/neovim nvim
 stylua stylua
 lua-language-server lua-language-server

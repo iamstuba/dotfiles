@@ -2,11 +2,30 @@
 # includes "work". The installer writes ~/.config/mise/miserc.toml with
 # env = ["work"] when told to; that file is never tracked. MISE_ENV
 # cannot live in a mise.toml because it decides which mise.toml files load.
+# It holds the work Mac's tools, env, JDK postinstall and tasks, and the
+# packages it adds.
+# Packages it turns off are in the repo-root mise.work.toml.
 
 [tools]
 # Only the work Mac uses gitlab.com, so glab lives here. brew:glab is the
 # fallback; aqua's entry lists no versions and carries no checksum.
 "gitlab:gitlab-org/cli" = "latest"
+# Compose v2 is a docker CLI plugin. The postinstall reruns on every upgrade,
+# so the link in ~/.docker/cli-plugins always names the installed version.
+docker-compose = { version = "latest", postinstall = 'mkdir -p "$HOME/.docker/cli-plugins" && ln -sfn "$MISE_TOOL_INSTALL_PATH/docker-compose" "$HOME/.docker/cli-plugins/docker-compose"' }
+# The release binary is named buildx-<version>.darwin, and docker loads a
+# plugin only as docker-<name>, so bin renames it. Its postinstall links it
+# the way compose's does.
+"github:docker/buildx" = { version = "latest", bin = "docker-buildx", postinstall = 'mkdir -p "$HOME/.docker/cli-plugins" && ln -sfn "$MISE_TOOL_INSTALL_PATH/docker-buildx" "$HOME/.docker/cli-plugins/docker-buildx"' }
+# On PATH, it makes docker login set credsStore and keep the token in the
+# login keychain, not base64 in ~/.docker/config.json. The release also
+# carries a pass helper for macOS, so matching picks this one.
+"github:docker/docker-credential-helpers" = { version = "latest", bin = "docker-credential-osxkeychain", matching = "osxkeychain" }
+
+[bootstrap.packages]
+# Homebrew builds the docker CLI from source, and mise's docker-cli takes its
+# first download on trust.
+"brew:docker" = "latest"
 
 [env]
 # Telemetry doubles every request the bar's chip makes, and reports usage.

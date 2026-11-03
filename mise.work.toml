@@ -1,11 +1,15 @@
 # Repo-root half of the work overlay, read only when MISE_ENV includes "work".
-# It holds what the global overlay cannot: the link to that overlay, packages
+# It holds what the global overlay cannot: the work-only links, packages
 # marked absent, which only a file outranking mise.toml can turn off, and
 # tasks that need the clone through {{ config_root }}. Tools and added
 # packages stay in config/mise/config.work.toml.
 
 [dotfiles]
+# The global overlay itself, and glab's docker credential helper. glab writes
+# its own copy into the install dir of the glab version that ran, which the
+# next upgrade drops; this one stays.
 "~/.config/mise/config.work.toml" = "config/mise/config.work.toml"
+"~/.local/bin/docker-credential-glab" = "home/.local/bin/docker-credential-glab"
 
 [bootstrap.packages]
 # Not wanted on the work Mac. Here rather than in config/mise/config.work.toml
