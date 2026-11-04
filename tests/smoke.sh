@@ -3794,6 +3794,23 @@ else
   printf 'skip tools resolve: mise is not on PATH\n'
 fi
 
+# config.work.toml's rust entry says why the profile matters. Its postinstall
+# sets it, but only a mise install of rust runs that, so a Mac that installed
+# rust earlier misses it. `rustup show profile` reads settings.toml and makes
+# no network call.
+if ! env_loads work; then
+  printf 'skip rustup profile: the work overlay does not load\n'
+elif ! command -v rustup >/dev/null 2>&1; then
+  printf 'skip rustup profile: rustup is not on PATH\n'
+else
+  # stdout only, so a warning on stderr cannot pass for the profile name.
+  rustup_profile=$(rustup show profile 2>"$tmp_home/rustup-stderr") \
+    || fail "rustup profile: rustup show profile failed: $(cat "$tmp_home/rustup-stderr")"
+  [ "$rustup_profile" = minimal ] \
+    || fail "rustup profile is $rustup_profile, not minimal; run rustup set profile minimal"
+  ok "rustup profile"
+fi
+
 # glab reads GLAB_CONFIG_DIR as given, so an unrendered "{{ env.HOME }}" would
 # send its login to a relative directory named after the template. The temp
 # HOME links both global files, so mise answers with what a work Mac merges.

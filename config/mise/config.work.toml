@@ -14,8 +14,12 @@
 # postinstall below imports the keychain's CAs into every JDK mise installs.
 java = "temurin-25"
 # The minimal profile leaves out the 920 MB docs component. The postinstall
-# stops rustup checking for its own updates in the background.
-rust = { version = "latest", profile = "minimal", components = ["clippy", "rustfmt", "rust-analyzer"], postinstall = "rustup set auto-self-update disable" }
+# stops rustup checking for its own updates in the background. It also sets
+# rustup's default profile to minimal. mise installs a toolchain that a
+# repo's rust-toolchain.toml pins with that profile's components, so it gets
+# no rust-docs, and no clippy or rustfmt unless the file lists them. A
+# profile or components named in the file still win.
+rust = { version = "latest", profile = "minimal", components = ["clippy", "rustfmt", "rust-analyzer"], postinstall = "rustup set auto-self-update disable && rustup set profile minimal" }
 # prost-build finds protoc on PATH, so the overlay sets no PROTOC and installs
 # no cmake.
 protoc = "latest"
