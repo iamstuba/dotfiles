@@ -3794,21 +3794,30 @@ else
   printf 'skip tools resolve: mise is not on PATH\n'
 fi
 
-# config.work.toml's rust entry says why the profile matters. Its postinstall
-# sets it, but only a mise install of rust runs that, so a Mac that installed
-# rust earlier misses it. `rustup show profile` reads settings.toml and makes
-# no network call.
+# config.work.toml's rust entry says why both settings matter. Its
+# postinstall sets them, but only a mise install of rust runs that, so a Mac
+# that installed rust earlier misses them. Both answers come from
+# settings.toml, with no network call.
 if ! env_loads work; then
-  printf 'skip rustup profile: the work overlay does not load\n'
+  printf 'skip rustup settings: the work overlay does not load\n'
 elif ! command -v rustup >/dev/null 2>&1; then
-  printf 'skip rustup profile: rustup is not on PATH\n'
+  printf 'skip rustup settings: rustup is not on PATH\n'
 else
-  # stdout only, so a warning on stderr cannot pass for the profile name.
+  # stdout only, so a warning on stderr cannot pass for the answer.
   rustup_profile=$(rustup show profile 2>"$tmp_home/rustup-stderr") \
-    || fail "rustup profile: rustup show profile failed: $(cat "$tmp_home/rustup-stderr")"
+    || fail "rustup settings: rustup show profile failed: $(cat "$tmp_home/rustup-stderr")"
   [ "$rustup_profile" = minimal ] \
     || fail "rustup profile is $rustup_profile, not minimal; run rustup set profile minimal"
-  ok "rustup profile"
+  # rustup has no getter for this, and `rustup set auto-self-update` with no
+  # value turns it on, so this reads the file rustup writes. A missing key
+  # means rustup's default, enable.
+  rustup_home=$(rustup show home 2>"$tmp_home/rustup-stderr") \
+    || fail "rustup settings: rustup show home failed: $(cat "$tmp_home/rustup-stderr")"
+  rustup_update=$(yq -p toml -oy '.auto_self_update // "enable"' "$rustup_home/settings.toml") \
+    || fail "rustup settings: yq could not read $rustup_home/settings.toml"
+  [ "$rustup_update" = disable ] \
+    || fail "rustup auto-self-update is $rustup_update, not disable; run rustup set auto-self-update disable"
+  ok "rustup settings"
 fi
 
 # glab reads GLAB_CONFIG_DIR as given, so an unrendered "{{ env.HOME }}" would
