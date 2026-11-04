@@ -79,6 +79,10 @@ covers what the second cannot see; see "Rerunning" below. Run the second from
 the repo or with `mise -C <repo>`. Anywhere else mise finds no
 `[bootstrap.packages]` and reports that none are configured.
 
+A tool set to `latest` stays on the version it first installed. Bootstrap and
+`mise install` keep that version, even one a repo's pin installed, and only
+`update:tools` moves it.
+
 On the work Mac, `update:tools` ends with `ca:refresh`, which re-exports the
 System keychain's CAs and imports them into every mise JDK, so
 `mise run ca:refresh` alone is enough after a CA rotation.
