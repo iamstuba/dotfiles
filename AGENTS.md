@@ -25,4 +25,4 @@ such as Chrome, and leave out how it is managed and what watches it.
 
 ### Domain docs
 
-Single-context: one `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+Single-context: one `CONTEXT.md` at the repo root and no ADRs. Decisions live in the `.scratch/` tickets. See `docs/agents/domain.md`.

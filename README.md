@@ -51,6 +51,11 @@ LibreWolf, on a personal Mac only
 GitLab, on the work Mac only
 
 - The first `git clone` from gitlab.com asks to confirm its host key. Compare it with the [SSH fingerprints GitLab publishes for gitlab.com](https://docs.gitlab.com/user/gitlab_com/#ssh-host-keys-fingerprints) before you answer yes.
+- Run `glab auth configure-docker` once, so `docker` pulls from GitLab's container registry through glab.
+
+Containers, on the work Mac only
+
+- Run `colima start` before you need Docker and `colima stop` after. Nothing starts the VM at login, and a running VM holds up to 8 GiB of RAM.
 
 Slack
 
@@ -119,7 +124,7 @@ file does not exist, and `mise run check` warns when it finds one.
 - `config/mise/config.work.toml`: loaded when `MISE_ENV` includes `work`. It holds the work-only tools, such as glab and the docker plugins, and the packages work adds, such as the docker CLI. It also holds their env and settings, the JDK CA postinstall and `ca:refresh`.
 - `config/mise/config.personal.toml`: pi, herdr and their tasks, loaded when `MISE_ENV` includes `personal`.
 - `mise.work.toml`: packages turned off at work, the work-only links such as glab's docker credential helper and the Colima template, and the task that merges the work Claude Code settings. `mise.personal.toml`: the dotfiles, pi's and herdr's among them, the bundled app removal and the LibreWolf policies a work Mac must not get. Each links its own global overlay. The installer sets `MISE_ENV` to exactly one of `work` and `personal`.
-- `config/`: mirrors `~/.config`. `home/`: top-level dotfiles. `bin/`: scripts on PATH.
+- `config/`: mirrors `~/.config`. `home/`: mirrors `$HOME` for everything outside `~/.config`. `bin/`: scripts on PATH.
 - `install.sh`, `tests/smoke.sh`, `assets/`.
 
 Planning lives in a private repo cloned at `.scratch/`, ignored here. See

@@ -1,42 +1,17 @@
-# Domain Docs
+# Domain docs
 
-How the engineering skills should consume this repo's domain documentation when exploring the codebase.
+How the engineering skills read this repo's domain documentation.
 
 ## Before exploring, read these
 
-- **`CONTEXT.md`** at the repo root, or
-- **`CONTEXT-MAP.md`** at the repo root if it exists: it points at one `CONTEXT.md` per context. Read each one relevant to the topic.
-- **`docs/adr/`**: read ADRs that touch the area you're about to work in. In multi-context repos, also check `src/<context>/docs/adr/` for context-scoped decisions.
+- `CONTEXT.md` at the repo root, the glossary.
+- The `.scratch/` tickets that own the area you are working in. Decisions
+  live in each ticket's Answer and the Comments below it, and an area's
+  `spec.md` reconciles them. See `issue-tracker.md`.
 
-If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The `/domain-modeling` skill (reached via `/grill-with-docs` and `/improve-codebase-architecture`) creates them lazily when terms or decisions actually get resolved.
-
-## File structure
-
-Single-context repo (most repos):
-
-```
-/
-├── CONTEXT.md
-├── docs/adr/
-│   ├── 0001-event-sourced-orders.md
-│   └── 0002-postgres-for-write-model.md
-└── src/
-```
-
-Multi-context repo (presence of `CONTEXT-MAP.md` at the root):
-
-```
-/
-├── CONTEXT-MAP.md
-├── docs/adr/                          ← system-wide decisions
-└── src/
-    ├── ordering/
-    │   ├── CONTEXT.md
-    │   └── docs/adr/                  ← context-specific decisions
-    └── billing/
-        ├── CONTEXT.md
-        └── docs/adr/
-```
+This repo has one context and no ADRs. Never create `docs/adr/` or
+`CONTEXT-MAP.md`. When `/domain-modeling` settles a decision, record it on
+the ticket that owns it. Glossary terms still go in `CONTEXT.md`.
 
 ## Use the glossary's vocabulary
 
@@ -44,8 +19,9 @@ When your output names a domain concept (in an issue title, a refactor proposal,
 
 If the concept you need isn't in the glossary yet, that's a signal: either you're inventing language the project doesn't use (reconsider) or there's a real gap (note it for `/domain-modeling`).
 
-## Flag ADR conflicts
+## Flag decision conflicts
 
-If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
+If your output contradicts a ticket's Answer or a comment on it, say so
+instead of overriding it silently, and name the decision:
 
-> _Contradicts ADR-0007 (event-sourced orders), but worth reopening because…_
+> _Contradicts the decision to mount only `~/projects` into the VM, but worth reopening because…_
