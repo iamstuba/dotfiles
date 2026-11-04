@@ -123,7 +123,6 @@ NSGlobalDomain.AppleKeyboardUIMode = 3
 NSGlobalDomain.NSWindowShouldDragOnGesture = true
 "com.apple.finder".FXDefaultSearchScope = "SCcf"
 "com.apple.assistant.support"."Assistant Enabled" = false
-"com.apple.Siri".UserHasDeclinedEnable = true
 "com.apple.WindowManager".StandardHideWidgets = true
 "com.apple.WindowManager".StageManagerHideWidgets = true
 "com.apple.ncprefs".content_visibility = 2

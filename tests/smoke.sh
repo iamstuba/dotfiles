@@ -296,6 +296,12 @@ for domain, keys in root["bootstrap"]["macos"].get("defaults", {}).items():
     for key, value in keys.items():
         if not isinstance(value, (bool, int, float, str)):
             errs.append(f"defaults {domain}.{key} is a {type(value).__name__}; mise skips arrays and dicts")
+    # A sandboxed app's domain lives in its container, which a terminal
+    # without Full Disk Access cannot write, and the failed write stops
+    # bootstrap. A fresh Mac may not have the container yet, so the domains
+    # already seen failing are named too.
+    if domain in {"com.apple.Siri"} or (pathlib.Path.home() / "Library/Containers" / domain).is_dir():
+        errs.append(f"defaults {domain} lives in a sandbox container, so bootstrap cannot write it without Full Disk Access")
 
 # Onboarding state and usage history would carry this Mac's state to the next
 # one. The audio priority device lists would too, and the scalar check above
