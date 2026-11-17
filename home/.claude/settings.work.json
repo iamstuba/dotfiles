@@ -118,7 +118,6 @@
       "Bash(git *push * :**)",
       "Bash(git *push *--mirror*)",
       "Bash(git *push *--prune*)",
-      "Bash(sudo *)",
       "Bash(glab mr merge *)"
     ]
   }

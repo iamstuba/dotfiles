@@ -2064,7 +2064,6 @@ probe_yaml "claude work settings" home/.claude/settings.work.json '{
     "Bash(git *push * :**)",
     "Bash(git *push *--mirror*)",
     "Bash(git *push *--prune*)",
-    "Bash(sudo *)",
     "Bash(glab mr merge *)"
   ]
 }'
@@ -2175,9 +2174,9 @@ ccw_lists=$(jq -c --argjson deny "$ccw_deny" --argjson ask "$ccw_ask" '[
     ($deny - .permissions.deny == []), ($ask - .permissions.ask == []),
     (.permissions.deny | length), (.permissions.ask | length)
   ]' "$cc/home/.claude/settings.json")
-# The Mac's one own entry plus 48 work denies, and its one own entry plus 58
+# The Mac's one own entry plus 48 work denies, and its one own entry plus 57
 # work asks.
-[ "$ccw_lists" = "[true,true,true,true,49,59]" ] \
+[ "$ccw_lists" = "[true,true,true,true,49,58]" ] \
   || fail "setup-claude:work left duplicates or missing entries (unique deny, unique ask, all deny, all ask, counts): $ccw_lists"
 # A run that changes the file keeps its mode and inode. mktemp makes 600
 # files, so the mode alone would pass a merge that moved its temp file over.
