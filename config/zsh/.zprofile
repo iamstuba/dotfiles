@@ -3,6 +3,11 @@
 # Without this the formulae the manifest installs (bash, eza, the three zsh
 # plugins) are not on PATH.
 export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$PATH"
+# Under Workbrew, /opt/homebrew/bin/brew can't write the Cellar, so Workbrew's
+# brew must come first. Its directory holds only brew and shadows nothing.
+# A literal path, not `brew shellenv`, which would put site-functions on fpath
+# and make compinit prompt.
+[[ -x /opt/workbrew/bin/brew ]] && path=(/opt/workbrew/bin $path)
 
 # macOS /etc/zprofile runs path_helper before this file, and path_helper
 # rebuilds PATH from /etc/paths, appending whatever .zshenv set behind
