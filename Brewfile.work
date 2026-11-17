@@ -1,0 +1,11 @@
+# Homebrew packages for the work Mac only, installed after the shared Brewfile.
+
+# Homebrew builds the docker CLI from source, and mise's docker-cli takes its
+# first download on trust.
+brew "docker"
+# mise's aws-cli unpacks a .pkg that has no checksum, and mise never checks
+# its signature. A codesign check after the install would cover one
+# executable, not the Python files beside it. Homebrew pins the bottle's
+# sha256. The cost is a Homebrew Python, and update:apps upgrades it, not
+# update:tools.
+brew "awscli"

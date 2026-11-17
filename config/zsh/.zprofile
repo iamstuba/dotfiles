@@ -1,7 +1,7 @@
-# Login shells. mise pours brew bottles itself and installs no brew program, so
-# there is no `brew shellenv` to run and mise writes no /etc/paths.d file.
-# Without this the formulae the manifest installs (bash, eza, the three zsh
-# plugins) are not on PATH.
+# Login shells. Homebrew's brew, or Workbrew's where it exists, installs the
+# formulae the Brewfiles list, such as bash, eza and the three zsh plugins.
+# Nothing else puts /opt/homebrew/bin ahead of /usr/local/bin and /usr/bin, so
+# without this line they are missing or lose to older copies.
 export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$PATH"
 # Under Workbrew, Homebrew's own brew refuses to run, so Workbrew's brew must
 # come first. Its directory holds only brew, so it shadows no other command.

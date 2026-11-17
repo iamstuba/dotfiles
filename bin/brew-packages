@@ -1,0 +1,86 @@
+#!/bin/sh
+# Installs or upgrades every Homebrew package from the tracked Brewfiles: the
+# shared Brewfile, then Brewfile.<env> for each env MISE_ENV names. The
+# pre-packages hook runs `install` and update:apps runs `upgrade`.
+# Under Workbrew, Homebrew's own brew refuses to run, so Workbrew's brew comes
+# first. Homebrew's installer runs only when neither brew exists.
+# Runs on system binaries only. --dry-run or DRY_RUN=1 prints.
+set -eu
+
+action=${1:-}
+case "$action" in
+  install|upgrade) ;;
+  *) echo "brew-packages: expected install or upgrade, got '${action}'" >&2; exit 1 ;;
+esac
+case "${2:-}" in
+  "") ;;
+  --dry-run) DRY_RUN=1 ;;
+  *) echo "brew-packages: unknown argument $2" >&2; exit 1 ;;
+esac
+run() { if [ "${DRY_RUN:-}" ]; then printf '+ %s\n' "$*"; else "$@"; fi; }
+
+repo=$(cd "$(dirname "$0")/.." && pwd)
+# The smoke test points these at stubs.
+workbrew=${DOTFILES_WORKBREW_BREW:-/opt/workbrew/bin/brew}
+homebrew=${DOTFILES_HOMEBREW_BREW:-/opt/homebrew/bin/brew}
+
+if [ -x "$workbrew" ]; then
+  brew=$workbrew
+elif [ -x "$homebrew" ]; then
+  brew=$homebrew
+elif [ "$action" = install ]; then
+  # NONINTERACTIVE skips the RETURN prompt and makes Homebrew's sudo check
+  # fail at once instead of asking for a password nobody is there to type.
+  # One string for both paths, so the dry run prints what a real run executes.
+  # shellcheck disable=SC2016  # the eval below expands it
+  installer='NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+  if [ "${DRY_RUN:-}" ]; then
+    printf '+ %s\n' "$installer"
+  else
+    eval "$installer"
+  fi
+  brew=$homebrew
+else
+  echo "brew-packages: no brew at $workbrew or $homebrew; run brew-packages install first" >&2
+  exit 1
+fi
+if [ "${DRY_RUN:-}" ]; then printf '+ (brew is %s)\n' "$brew"; fi
+
+# A hand run has no MISE_ENV, so it reads miserc the way mise does.
+envs=${MISE_ENV:-}
+if [ -z "$envs" ] && [ -f "$HOME/.config/mise/miserc.toml" ]; then
+  envs=$(sed -n 's/^env *= *\[\(.*\)\].*/\1/p' "$HOME/.config/mise/miserc.toml" | tr -d '" ' | head -n 1)
+fi
+
+bundle() { # $1: a Brewfile
+  if [ "$action" = install ]; then
+    # check first, so a bootstrapped Mac makes no network call, and
+    # --no-upgrade, so bootstrap never upgrades.
+    if [ "${DRY_RUN:-}" ]; then
+      printf '+ %s bundle check --file=%s || %s bundle install --no-upgrade --file=%s\n' "$brew" "$1" "$brew" "$1"
+    elif ! "$brew" bundle check --file="$1" >/dev/null; then
+      "$brew" bundle install --no-upgrade --file="$1"
+    fi
+  else
+    # A plain bundle install upgrades what the file lists.
+    run "$brew" bundle install --file="$1"
+  fi
+}
+
+bundle "$repo/Brewfile"
+old_ifs=$IFS
+IFS=,
+for env in $envs; do
+  IFS=$old_ifs
+  if [ -f "$repo/Brewfile.$env" ]; then
+    bundle "$repo/Brewfile.$env"
+  fi
+done
+IFS=$old_ifs
+
+# Hand installs are upgraded too. No --greedy: it would replace the bundles of
+# casks that update themselves, such as Ghostty while it runs. A cask that
+# needs it says greedy: true on its Brewfile line.
+if [ "$action" = upgrade ]; then
+  run "$brew" upgrade
+fi

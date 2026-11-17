@@ -1,8 +1,7 @@
 # Repo-root half of the work overlay, read only when MISE_ENV includes "work".
-# It holds what the global overlay cannot: the work-only links, packages
-# marked absent, which only a file outranking mise.toml can turn off, and
-# tasks that need the clone through {{ config_root }}. Tools and added
-# packages stay in config/mise/config.work.toml.
+# It holds what the global overlay cannot: the work-only links and tasks that
+# need the clone through {{ config_root }}. Tools stay in
+# config/mise/config.work.toml.
 
 [dotfiles]
 # The global overlay itself, glab's docker credential helper and Colima's
@@ -13,16 +12,6 @@
 "~/.config/mise/config.work.toml" = "config/mise/config.work.toml"
 "~/.local/bin/docker-credential-glab" = "home/.local/bin/docker-credential-glab"
 "~/.local/share/colima/_templates/default.yaml" = "home/.local/share/colima/_templates/default.yaml"
-
-[bootstrap.packages]
-# Not wanted on the work Mac. Here rather than in config/mise/config.work.toml
-# because an entry there loses to mise.toml's declaration.
-"brew-cask:librewolf" = { state = "absent" }
-"brew-cask:proton-pass" = { state = "absent" }
-"brew-cask:thunderbird" = { state = "absent" }
-"brew-cask:proton-mail-bridge" = { state = "absent" }
-# The work Mac brings its own Slack, so one app never has two sources.
-"brew-cask:slack" = { state = "absent" }
 
 [tasks."setup-claude:work"]
 description = "Merge the work deny and ask lists into Claude Code's settings."

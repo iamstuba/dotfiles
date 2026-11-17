@@ -11,6 +11,12 @@ idiomatic_version_file_enable_tools = ["node"]
 # api.github.com and exceed its anonymous rate limit.
 use_versions_host_track = false
 disable_update_warning = true                   # update:tools updates mise
+# bin/brew-packages installs every Homebrew package from the Brewfiles. The
+# empty list turns off all of mise's package managers, brew and brew-cask
+# among them, so mise never pours a bottle. Without sudo, mise never offers
+# to chown the prefix.
+system_packages.managers = []
+system_packages.sudo = false
 
 [tools]
 node = "lts"        # stays first: the npm: tools run on it
@@ -71,9 +77,9 @@ run = """
 """
 
 [tasks."update:apps"]
-description = "Update Homebrew formulae and casks, both those mise pours and those it cannot resolve."
+description = "Upgrade every Homebrew package."
 run = """
-  # mise replaces LibreWolf's bundle even while it runs, so quit it first. A
+  # brew replaces LibreWolf's bundle even while it runs, so quit it first. A
   # clean quit, not pkill, writes the session its start page restores. Only a
   # running LibreWolf gets this far, so a Mac without LibreWolf never calls
   # osascript, which fails there.
@@ -100,12 +106,7 @@ run = """
   # update:dotfiles resolves the repo the same way. This is the global file, so
   # {{ config_root }} here would be ~, not the repo.
   repo="${DOTFILES:-$HOME/projects/iamstuba/dotfiles}"
-  # The task runs in ~, where mise finds no [bootstrap.packages] and upgrades
-  # nothing. From the repo, mise also reads the overlay that MISE_ENV names.
-  mise -C "$repo" bootstrap packages upgrade --yes
-  # The tap packages are absent from [bootstrap.packages], so the line above
-  # cannot see them and nothing else upgrades them.
-  sh "$repo/bin/brew-tap-packages" upgrade
+  sh "$repo/bin/brew-packages" upgrade
 """
 
 [tasks."update:plugins"]

@@ -28,7 +28,7 @@ System Settings
 
 Vorssaint
 
-- In the first-run picker, skip the ready setups and tick only these features: Command Bar, Clipboard, Clean URL, Cut & paste, Quit & close protection, Smooth scrolling, Invert mouse scrolling, Disable mouse acceleration, Music app blocker, Audio device priority. Leave the rest uninstalled: AeroSpace owns windows, Karabiner owns keys, mise owns installs (so not Homebrew, App updates or Uninstaller), and bootstrap already sets the wallpaper and keeps Spaces in a fixed order.
+- In the first-run picker, skip the ready setups and tick only these features: Command Bar, Clipboard, Clean URL, Cut & paste, Quit & close protection, Smooth scrolling, Invert mouse scrolling, Disable mouse acceleration, Music app blocker, Audio device priority. Leave the rest uninstalled: AeroSpace owns windows, Karabiner owns keys, Homebrew and mise own installs (so not Homebrew, App updates or Uninstaller), and bootstrap already sets the wallpaper and keeps Spaces in a fixed order.
 
 AeroSpace
 
@@ -73,11 +73,8 @@ mise run update:all
 
 Runs, in order: `update:dotfiles` (fast-forward this repo when on main), `update:tools`
 (mise and every tool, and on a personal Mac pi's extensions and a list of
-outdated herdr integrations), `update:apps` (formulae and casks), `update:plugins` (Neovim). Run `mise upgrade --dry-run`, `mise bootstrap packages upgrade --dry-run`
-and `bin/brew-tap-packages upgrade --dry-run` first on a new machine. The third
-covers what the second cannot see; see "Rerunning" below. Run the second from
-the repo or with `mise -C <repo>`. Anywhere else mise finds no
-`[bootstrap.packages]` and reports that none are configured.
+outdated herdr integrations), `update:apps` (every Homebrew package), `update:plugins` (Neovim). Run `mise upgrade --dry-run`
+and `bin/brew-packages upgrade --dry-run` first on a new machine.
 
 A tool set to `latest` stays on the version it first installed. Bootstrap and
 `mise install` keep that version, even one a repo's pin installed, and only
@@ -96,10 +93,10 @@ The first run asks to let the terminal control LibreWolf; allow it.
 
 What no task can do:
 
-- Karabiner-Elements updates itself. mise never touches it.
+- Karabiner-Elements updates itself. brew never upgrades it.
 - AeroSpace is replaced while running and may lose its Accessibility grant. Re-grant and relaunch after an update.
 - Ghostty updates only through its own "check for updates".
-- Vorssaint updates itself. mise skips it whenever it is running, and it runs from login.
+- Vorssaint updates itself. brew never upgrades it.
 
 ## Rerunning
 
@@ -107,13 +104,12 @@ What no task can do:
 Account sign-in was skipped in Setup Assistant, sign in and rerun it so the
 Apple Intelligence key gets written.
 
-SketchyBar, Borders and AeroSpace come from Homebrew, not from the packages
-phase. They live in third-party taps that publish no API metadata, and mise's
-fallback for that wants Ruby 3 or newer where macOS ships 2.6, so it cannot
-resolve them at all. `bin/brew-tap-packages` names them and does the brew work;
-the pre-packages hook calls it to install and `update:apps` to upgrade.
-SketchyBar and Borders build from source, which is the slow part of a fresh
-Mac.
+Every Homebrew package this repo installs is in a Brewfile: `Brewfile` on
+every Mac, plus `Brewfile.work` or `Brewfile.personal`. `bin/brew-packages` installs them from
+the pre-packages hook and upgrades them from `update:apps`, through Workbrew's
+brew where it exists and Homebrew's otherwise. A failed install prints a
+warning, and the rest of bootstrap still runs. SketchyBar and Borders build
+from source, which is the slow part of a fresh Mac.
 
 On a Mac set up by hand, move `~/.gitconfig` aside first. Git reads
 `~/.config/git/config`, where this repo's git config is linked, only while that
@@ -123,11 +119,12 @@ file does not exist, and `mise run check` warns when it finds one.
 
 ## Layout
 
-- `mise.toml`: packages, symlink map, macOS defaults, hooks, repo-bound tasks.
+- `mise.toml`: symlink map, macOS defaults, hooks, repo-bound tasks.
+- `Brewfile`: every Homebrew package for every Mac. `Brewfile.work` and `Brewfile.personal` add the packages only that kind of Mac gets. `bin/brew-packages` installs and upgrades them.
 - `config/mise/config.toml`: tools, settings, update tasks. Symlinked to `~/.config/mise/`.
-- `config/mise/config.work.toml`: loaded when `MISE_ENV` includes `work`. It holds the work-only tools, such as glab and the docker plugins, and the packages work adds, such as the docker CLI. It also holds their env and settings, the JDK CA postinstall and `ca:refresh`.
+- `config/mise/config.work.toml`: loaded when `MISE_ENV` includes `work`. It holds the work-only tools, such as glab and the docker plugins. It also holds their env and settings, the JDK CA postinstall and `ca:refresh`.
 - `config/mise/config.personal.toml`: pi, herdr and their tasks, loaded when `MISE_ENV` includes `personal`.
-- `mise.work.toml`: packages turned off at work, the work-only links such as glab's docker credential helper and the Colima template, and the task that merges the work Claude Code settings. `mise.personal.toml`: the dotfiles, pi's and herdr's among them, the bundled app removal and the LibreWolf policies a work Mac must not get. Each links its own global overlay. The installer sets `MISE_ENV` to exactly one of `work` and `personal`.
+- `mise.work.toml`: the work-only links such as glab's docker credential helper and the Colima template, and the task that merges the work Claude Code settings. `mise.personal.toml`: the dotfiles, pi's and herdr's among them, the bundled app removal and the LibreWolf policies a work Mac must not get. Each links its own global overlay. The installer sets `MISE_ENV` to exactly one of `work` and `personal`.
 - `config/`: mirrors `~/.config`. `home/`: mirrors `$HOME` for everything outside `~/.config`. `bin/`: scripts on PATH.
 - `install.sh`, `tests/smoke.sh`, `assets/`.
 

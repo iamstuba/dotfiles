@@ -89,19 +89,12 @@ if "tools" in global_cfg and next(iter(global_cfg["tools"])) != "node":
     errs.append("node must be the first tool so npm: tools run on it")
 if "tools" in root:
     errs.append("repo-root file carries tools; they are only on PATH inside the clone")
-if set(work) - {"tools", "bootstrap", "env", "settings", "hooks", "tasks"}:
-    errs.append(f"overlay carries unexpected tables: {sorted(set(work) - {'tools', 'bootstrap', 'env', 'settings', 'hooks', 'tasks'})}")
+if set(work) - {"tools", "env", "settings", "hooks", "tasks"}:
+    errs.append(f"overlay carries unexpected tables: {sorted(set(work) - {'tools', 'env', 'settings', 'hooks', 'tasks'})}")
 # The JDK import is the one hook. Any other runs after every install of
 # anything, anywhere, on the work Mac.
 if set(work.get("hooks", {})) - {"postinstall"}:
     errs.append(f"work overlay's hooks are {sorted(work['hooks'])}, not only postinstall")
-# Bootstrap reads added packages from here. An absent mark here does nothing,
-# because mise.toml's declaration wins, so those go in mise.work.toml.
-if set(work.get("bootstrap", {})) - {"packages"}:
-    errs.append(f"config.work.toml's bootstrap carries {sorted(work['bootstrap'])}, not only packages")
-for pkg, spec in work.get("bootstrap", {}).get("packages", {}).items():
-    if isinstance(spec, dict) and spec.get("state") == "absent":
-        errs.append(f"config.work.toml marks {pkg} absent, which mise.toml's declaration overrides; it belongs in mise.work.toml")
 # A block named after a config.toml task may carry depends_post and nothing
 # else, for the reason config.personal.toml's blocks may not.
 for name, task in work.get("tasks", {}).items():
@@ -148,11 +141,6 @@ for name, cfg in (("config/mise/config.toml", global_cfg), ("config/mise/config.
 for name, cfg in (("config/mise/config.toml", global_cfg), ("config/mise/config.personal.toml", global_personal)):
     for key in set(cfg.get("env", {})) & set(work.get("env", {})):
         errs.append(f"{name} sets {key}, which belongs only in config.work.toml")
-work_pkgs = {bare_name(k): k for k in work.get("bootstrap", {}).get("packages", {})}
-for name, cfg in (("mise.toml", root), ("mise.personal.toml", personal)):
-    for key in cfg.get("bootstrap", {}).get("packages", {}):
-        if bare_name(key) in work_pkgs:
-            errs.append(f"{name} declares {key}, and {work_pkgs[bare_name(key)]} belongs only in config.work.toml")
 # docker writes ~/.docker/config.json itself, tokens and credHelpers included,
 # so nothing links into ~/.docker. A credsStore from the osxkeychain helper
 # covers ECR's fallback login, so the ECR helper stays out.
@@ -165,8 +153,8 @@ for name, cfg in (("config/mise/config.toml", global_cfg), ("config/mise/config.
     for key in cfg.get("tools", {}):
         if "ecr-credential-helper" in key or "ecr-login" in key:
             errs.append(f"{name} declares {key}; docker login's ECR fallback uses the keychain helper")
-if set(root_work) - {"bootstrap", "dotfiles", "tasks"}:
-    errs.append(f"repo-root overlay carries more than packages, its link and tasks: {sorted(set(root_work) - {'bootstrap', 'dotfiles', 'tasks'})}")
+if set(root_work) - {"dotfiles", "tasks"}:
+    errs.append(f"repo-root overlay carries more than its links and tasks: {sorted(set(root_work) - {'dotfiles', 'tasks'})}")
 # A block named after a mise.toml task may carry depends_post and nothing
 # else, for the reason config.personal.toml's blocks may not.
 for name, task in root_work.get("tasks", {}).items():
@@ -192,21 +180,7 @@ if root_work.get("dotfiles", {}) != work_links:
 for target in root_work.get("dotfiles", {}):
     if target in root.get("dotfiles", {}):
         errs.append(f"{target} is in both mise.toml and mise.work.toml, so personal gets it too")
-if set(root_work.get("bootstrap", {})) - {"packages"}:
-    errs.append("repo-root overlay's bootstrap carries more than packages")
-# An entry there outranks mise.toml, so it may only turn a declared package off.
-for pkg, spec in root_work.get("bootstrap", {}).get("packages", {}).items():
-    if spec != {"state": "absent"}:
-        errs.append(f"repo-root overlay entry {pkg} should only set state = \"absent\"")
-    if pkg not in root.get("bootstrap", {}).get("packages", {}):
-        errs.append(f"repo-root overlay marks {pkg} absent, which mise.toml never declares")
-# LibreWolf is the personal Mac's one browser and Chrome the work Mac's, so
-# the cask sits in mise.toml with an absent line in the work overlay.
 # LibreWolf replaced Zen, so neither file may name Zen again, even in a comment.
-if root.get("bootstrap", {}).get("packages", {}).get("brew-cask:librewolf") != "latest":
-    errs.append("mise.toml does not declare brew-cask:librewolf = \"latest\", so a personal Mac loses its daily browser")
-if root_work.get("bootstrap", {}).get("packages", {}).get("brew-cask:librewolf") != {"state": "absent"}:
-    errs.append("mise.work.toml does not mark brew-cask:librewolf absent, so the work Mac gets it")
 for name in ("mise.toml", "mise.work.toml"):
     if re.search(r"\bzen\b", pathlib.Path(name).read_text(), re.I):
         errs.append(f"{name} names Zen, which LibreWolf replaced")
@@ -317,31 +291,35 @@ hooks = set(root["bootstrap"].get("hooks", {}))
 if hooks != {"pre-packages", "post-defaults", "final"}:
     errs.append(f"hooks are {sorted(hooks)}")
 
-# mise resolves a brew package through its tap's published api/ JSON and, when
-# that 404s, by evaluating the .rb, which wants Ruby 3 or newer against the 2.6
-# macOS ships. A tap is not required to publish that JSON and neither of the
-# two this repo uses does, so a tap entry here fails the packages phase
-# outright, on a real run as much as a dry one. Measured both ways:
-# brew:FelixKratz/formulae/sketchybar and brew-cask:nikitabobko/tap/aerospace
-# fail identically, so casks are no exception and the rule covers both
-# prefixes. It is deliberately broader than the measurement: a tap that does
-# publish api/ JSON would resolve, and this still rejects it. Lift the rule
-# when such a tap is actually wanted, rather than leaving the door open now.
-for key in root["bootstrap"].get("packages", {}):
-    backend, _, name = key.partition(":")
-    if backend in ("brew", "brew-cask") and "/" in name:
-        errs.append(f"{key} names a third-party tap, which mise cannot resolve. "
-                    "Install it from bin/brew-tap-packages instead")
+# Homebrew packages live in the Brewfiles, and mise's brew managers are off.
+# A brew: or brew-cask: entry would bring back mise pouring bottles.
+for name, cfg in (("mise.toml", root), ("mise.work.toml", root_work), ("mise.personal.toml", personal),
+                  ("config/mise/config.toml", global_cfg), ("config/mise/config.work.toml", work),
+                  ("config/mise/config.personal.toml", global_personal)):
+    for key in cfg.get("bootstrap", {}).get("packages", {}):
+        if key.split(":", 1)[0] in ("brew", "brew-cask"):
+            errs.append(f"{name} declares {key}; Homebrew packages belong in a Brewfile")
 
-# bin/brew-tap-packages is the only path to those packages, and the same
-# script upgrades them, so the hook must still reach it. mise also accepts a
-# bare string or an array here; this hook is a table with one `run` line and
-# the assertion reads it as one, so a change of form fails loudly rather than
-# matching nothing.
-pre_run = root["bootstrap"]["hooks"]["pre-packages"]["run"]
-if "bin/brew-tap-packages install" not in pre_run:
-    errs.append("pre-packages hook no longer installs the tap packages, and "
-                "[bootstrap.packages] cannot carry them")
+# Each Brewfile stays a plain list: one tap, brew or cask with a quoted name,
+# and greedy: true only on a cask.
+brewfile_line = re.compile(r'(tap|brew|cask) "([^"\s]+)"(, greedy: true)?(\s+#.*)?')
+brew_names = {}
+for p in sorted(pathlib.Path(".").glob("Brewfile*")):
+    for n, line in enumerate(p.read_text().splitlines(), 1):
+        if re.fullmatch(r"\s*(#.*)?", line):
+            continue
+        m = brewfile_line.fullmatch(line)
+        if not m or (m.group(3) and m.group(1) != "cask"):
+            errs.append(f"{p}:{n} is not one tap, brew or cask with a quoted name, greedy: true only on a cask: {line!r}")
+        elif m.group(1) != "tap":
+            brew_names[m.group(2).rsplit("/", 1)[-1]] = f"{p}:{n}"
+# No tool from two sources. A renamed tool, such as git-delta against delta,
+# slips through, so each move drops its mise entry in the same commit.
+for name, cfg in (("config/mise/config.toml", global_cfg), ("config/mise/config.work.toml", work),
+                  ("config/mise/config.personal.toml", global_personal)):
+    for key in cfg.get("tools", {}):
+        if last_segment(key) in brew_names:
+            errs.append(f"{name} declares {key}, and {brew_names[last_segment(key)]} installs it from Homebrew")
 
 age = global_cfg.get("settings", {}).get("minimum_release_age")
 if not isinstance(age, str):
@@ -507,56 +485,81 @@ sys.exit(1 if errs else 0)
 PY
 ok "librewolf policies"
 
-# The tap packages, which mise cannot resolve and so never appears in the
-# bootstrap plan beyond the hook line that calls this. This script is the only
-# place they are named, and both the hook and update:apps go through it, so the
-# two actions are asserted separately.
-out=$(HOME=$tmp_home sh bin/brew-tap-packages install --dry-run) || fail "brew-tap-packages install --dry-run"
-for tapped in FelixKratz/formulae/sketchybar FelixKratz/formulae/borders; do
-  echo "$out" | grep -q "brew install .*$tapped" || fail "brew-tap-packages: install misses $tapped"
+# Which brew bin/brew-packages picks and which Brewfiles it names. Both brew
+# paths point at stubs or at nothing, so the dry run never sees this Mac's.
+bp=$tmp_home/brew-packages
+mkdir -p "$bp"
+printf '#!/bin/sh\nexit 0\n' >"$bp/workbrew"
+printf '#!/bin/sh\nexit 0\n' >"$bp/homebrew"
+chmod +x "$bp/workbrew" "$bp/homebrew"
+brew_packages() { # $1: Workbrew's brew, $2: Homebrew's, $3: MISE_ENV, the rest: arguments
+  bp_wb=$1 bp_hb=$2 bp_env=$3
+  shift 3
+  HOME=$tmp_home MISE_ENV=$bp_env DOTFILES_WORKBREW_BREW=$bp_wb DOTFILES_HOMEBREW_BREW=$bp_hb \
+    sh bin/brew-packages "$@"
+}
+installer_line='NONINTERACTIVE=1 /bin/bash -c .*Homebrew/install'
+for pick in both homebrew neither; do
+  case $pick in
+    both) wb=$bp/workbrew hb=$bp/homebrew want=$bp/workbrew ;;
+    homebrew) wb=$bp/missing hb=$bp/homebrew want=$bp/homebrew ;;
+    neither) wb=$bp/missing hb=$bp/missing want=$bp/missing ;;
+  esac
+  out=$(brew_packages "$wb" "$hb" work install --dry-run) || fail "brew-packages install --dry-run with $pick"
+  echo "$out" | grep -qxF "+ (brew is $want)" || fail "brew-packages with $pick did not pick $want:
+$out"
+  echo "$out" | grep -qF "+ $want bundle check --file=$root/Brewfile || $want bundle install --no-upgrade --file=$root/Brewfile" \
+    || fail "brew-packages with $pick does not install the shared Brewfile through $want:
+$out"
+  if [ "$pick" = neither ]; then
+    echo "$out" | grep -q "$installer_line" || fail "brew-packages with no brew does not run Homebrew's installer"
+  elif echo "$out" | grep -q "$installer_line"; then
+    fail "brew-packages with $pick runs Homebrew's installer"
+  fi
 done
-echo "$out" | grep -q 'brew install --cask .*nikitabobko/tap/aerospace' \
-  || fail "brew-tap-packages: install misses nikitabobko/tap/aerospace"
-echo "$out" | grep -q 'NONINTERACTIVE=1 /bin/bash -c .*Homebrew/install' \
-  || fail "brew-tap-packages: Homebrew's installer can prompt"
-out=$(HOME=$tmp_home sh bin/brew-tap-packages upgrade --dry-run) || fail "brew-tap-packages upgrade --dry-run"
-# Separately asserted because `brew upgrade`, unlike `brew install`, will not
-# tap on demand, so an upgrade that lost its formulae fails silently on a
-# machine where the tap is present anyway.
-echo "$out" | grep -q 'brew upgrade .*FelixKratz/formulae/borders' \
-  || fail "brew-tap-packages: upgrade misses the formulae"
-echo "$out" | grep -q 'brew upgrade --cask .*nikitabobko/tap/aerospace' \
-  || fail "brew-tap-packages: upgrade misses the cask"
-sh bin/brew-tap-packages >/dev/null 2>&1 && fail "brew-tap-packages: missing action accepted"
-sh bin/brew-tap-packages install --bogus >/dev/null 2>&1 && fail "brew-tap-packages: unknown argument accepted"
-ok "brew-tap-packages --dry-run"
+for env in work personal; do
+  case $env in work) other=personal ;; *) other=work ;; esac
+  out=$(brew_packages "$bp/workbrew" "$bp/homebrew" "$env" install --dry-run) || fail "brew-packages install --dry-run under $env"
+  echo "$out" | grep -qF -- "--file=$root/Brewfile.$env" || fail "brew-packages under MISE_ENV=$env misses Brewfile.$env"
+  if echo "$out" | grep -qF -- "--file=$root/Brewfile.$other"; then
+    fail "brew-packages under MISE_ENV=$env names Brewfile.$other"
+  fi
+done
+out=$(brew_packages "$bp/workbrew" "$bp/homebrew" work upgrade --dry-run) || fail "brew-packages upgrade --dry-run"
+[ "$(echo "$out" | grep -v '^+ (')" = "+ $bp/workbrew bundle install --file=$root/Brewfile
++ $bp/workbrew bundle install --file=$root/Brewfile.work
++ $bp/workbrew upgrade" ] || fail "brew-packages upgrade --dry-run printed:
+$out"
+brew_packages "$bp/missing" "$bp/missing" work upgrade --dry-run >/dev/null 2>&1 \
+  && fail "brew-packages upgrade with no brew succeeded"
+sh bin/brew-packages >/dev/null 2>&1 && fail "brew-packages: missing action accepted"
+DRY_RUN=1 sh bin/brew-packages install --bogus >/dev/null 2>&1 && fail "brew-packages: unknown argument accepted"
+ok "brew-packages --dry-run"
 
-# update:apps quits LibreWolf before mise replaces its bundle, and reopens it
+# The pre-packages hook, run the way mise runs it, against a brew-packages
+# that fails. A brew failure must warn and leave the rest of bootstrap to run.
+hook=$tmp_home/pre-packages
+mkdir -p "$hook/bin"
+printf '#!/bin/sh\necho "$@" >"%s/ran"\nexit 1\n' "$hook" >"$hook/bin/brew-packages"
+chmod +x "$hook/bin/brew-packages"
+hook_run=$(yq -r '.bootstrap.hooks."pre-packages".run' mise.toml) || fail "pre-packages hook has no run text"
+hook_run=$(printf '%s' "$hook_run" | sed "s|{{ config_root }}|$hook|g")
+(cd "$hook" && /bin/sh -o errexit -c "$hook_run" 2>"$hook/err") \
+  || fail "pre-packages hook failed when brew-packages failed"
+[ "$(cat "$hook/ran" 2>/dev/null)" = install ] || fail "pre-packages hook did not run brew-packages install"
+grep -q 'brew-packages install failed' "$hook/err" || fail "pre-packages hook printed no warning: $(cat "$hook/err")"
+ok "pre-packages hook warns when brew fails"
+
+# update:apps quits LibreWolf before brew replaces its bundle, and reopens it
 # after. The task text runs the way mise runs it, against stubs that log, so
 # nothing on this Mac quits, opens or upgrades.
 upd=$tmp_home/update-apps
 mkdir -p "$upd/stubs" "$upd/dotfiles/bin"
-: >"$upd/dotfiles/bin/brew-tap-packages"
+: >"$upd/dotfiles/bin/brew-packages"
 # Each stub logs its arguments, and the one named in UPD_FAIL exits 1.
-for name in osascript open sh; do
+for name in osascript open sh mise; do
   printf '#!/bin/sh\necho "%s $*" >>"$UPD_LOG"\n[ "$UPD_FAIL" != %s ]\n' "$name" "$name" >"$upd/stubs/$name"
 done
-# mise reads [bootstrap.packages] from the directory it starts in and its
-# parents, and finds none from ~, where it runs global tasks. The mise stub
-# checks only its start directory and marks a run there without the table, so
-# the log comparisons fail.
-printf '[bootstrap.packages]\n' >"$upd/dotfiles/mise.toml"
-cat >"$upd/stubs/mise" <<'EOF'
-#!/bin/sh
-dir=$PWD
-if [ "$1" = -C ]; then dir=$2; shift 2; fi
-if grep -qxF '[bootstrap.packages]' "$dir/mise.toml" 2>/dev/null; then
-  echo "mise $*" >>"$UPD_LOG"
-else
-  echo "mise $* without [bootstrap.packages]" >>"$UPD_LOG"
-fi
-[ "$UPD_FAIL" != mise ]
-EOF
 printf '#!/bin/sh\n' >"$upd/stubs/sleep"
 # The pgrep stub finds LibreWolf running on its first UPD_RUNNING_CHECKS calls.
 # It logs any other arguments, so a guard that lost -x or named another
@@ -579,9 +582,8 @@ update_apps() { # $1: how many pgrep calls find LibreWolf running, $2: the stub 
     UPD_RUNNING_CHECKS=$1 UPD_FAIL=${2:-} /bin/sh -o errexit -c "$upd_run" 2>"$upd/err")
 }
 upd_quit='osascript -e with timeout of 30 seconds -e tell application id "net.librewolf.librewolf" to quit -e end timeout'
-upd_mise='mise bootstrap packages upgrade --yes'
-upd_upgrade="$upd_mise
-sh $upd/dotfiles/bin/brew-tap-packages upgrade"
+# The mise stub logs too, so any mise call fails the log comparisons.
+upd_upgrade="sh $upd/dotfiles/bin/brew-packages upgrade"
 upd_open='open -b net.librewolf.librewolf'
 upd_log_is() { # $1: the run, $2: the log it must have written
   [ "$(cat "$upd/log")" = "$2" ] || fail "update:apps $1 logged:
@@ -613,9 +615,9 @@ $upd_open"
     || fail "update:apps $run printed: $(cat "$upd/err")"
 done
 
-update_apps 1 mise && fail "update:apps hid a failed upgrade"
+update_apps 1 sh && fail "update:apps hid a failed upgrade"
 upd_log_is "with a failed upgrade" "$upd_quit
-$upd_mise
+$upd_upgrade
 $upd_open"
 
 update_apps 1 open || fail "update:apps failed an upgrade that worked because the reopen failed"
@@ -2781,7 +2783,7 @@ ok "aerospace config"
 # point, such as <U+F4BC>. The other stubs log their arguments, print the
 # case's fixture and exit with its code.
 bar_dir=config/sketchybar
-[ -x /opt/homebrew/bin/bash ] || fail "bar: /opt/homebrew/bin/bash is missing; brew:bash installs it"
+[ -x /opt/homebrew/bin/bash ] || fail "bar: /opt/homebrew/bin/bash is missing; the shared Brewfile installs it"
 for f in $bar_dir/sketchybarrc $bar_dir/plugins/*; do
   [ "$(head -n 1 "$f")" = '#!/opt/homebrew/bin/bash' ] \
     || fail "bar: $f does not start with #!/opt/homebrew/bin/bash"
@@ -3524,9 +3526,8 @@ else
   printf 'skip ghostty config: no Ghostty binary on PATH or in /Applications\n'
 fi
 
-# The real parser, when a mise exists. This block went red on every Mac with
-# mise on it until the three tap entries left [bootstrap.packages]; see the
-# note there. It has no value as a pass/fail gate unless it can reach one.
+# The real parser, when a mise exists. It has no value as a pass/fail gate
+# unless it can reach one.
 #
 # HOME is a temp directory, the way every other dry run above takes one. With
 # the real HOME the dotfiles phase refuses to overwrite whatever already sits

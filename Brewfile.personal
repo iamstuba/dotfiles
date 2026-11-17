@@ -1,0 +1,9 @@
+# Homebrew packages for a personal Mac only, installed after the shared
+# Brewfile. The work Mac does not want these.
+
+cask "librewolf"
+cask "proton-pass"
+cask "thunderbird"
+cask "proton-mail-bridge"
+# The work Mac brings its own Slack, so one app never has two sources.
+cask "slack"

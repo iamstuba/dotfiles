@@ -1,48 +1,10 @@
-# Repo-root half of the manifest: packages, the symlink map, macOS defaults,
-# hooks, and the tasks that name a repo path. Tools, settings and the other
-# tasks are in config/mise/config.toml. Split by scope, not topic: tools are
-# only on PATH inside the declaring file's tree, and [dotfiles] sources resolve
-# against the declaring file's directory.
+# Repo-root half of the manifest: the symlink map, macOS defaults, hooks, and
+# the tasks that name a repo path. Tools, settings and the other tasks are in
+# config/mise/config.toml, and Homebrew packages in the Brewfiles. Split by
+# scope, not topic: tools are only on PATH inside the declaring file's tree,
+# and [dotfiles] sources resolve against the declaring file's directory.
 
 min_version = "2026.8.15"  # last release that changed the dotfiles semantics we lean on
-
-# ---------------------------------------------------------------- packages --
-# No pins: brew and brew-cask ignore them. Formulae only where mise's own
-# backends cannot deliver.
-
-# Take over an app that is already in /Applications instead of replacing it.
-# A replace drops the app's privacy grants, and it cannot chown or remove a
-# root-owned bundle it moves aside. Self-updating casks are adopted as they
-# are; any other cask whose app differs from the download fails and is left
-# alone.
-[bootstrap.brew]
-adopt = true
-
-[bootstrap.packages]
-"brew:bash" = "latest"                            # bar plugins need bash 4+
-"brew:eza" = "latest"                             # aqua entry is Linux-only
-"brew:btop" = "latest"                            # aqua entry is Linux-only
-"brew:zsh-autosuggestions" = "latest"
-"brew:zsh-syntax-highlighting" = "latest"
-"brew:fzf-tab" = "latest"
-# Nothing from a third-party tap belongs in this table, formula or cask. mise
-# resolves a tap through its published api/ JSON, which a tap is not required
-# to carry and neither FelixKratz/formulae nor nikitabobko/tap does, and its
-# fallback evaluates the .rb, which wants Ruby 3 or newer against the 2.6 macOS
-# ships. sketchybar, borders and aerospace live in bin/brew-tap-packages, which
-# the pre-packages hook runs.
-
-"brew-cask:ghostty" = "latest"
-"brew-cask:librewolf" = "latest"
-"brew-cask:proton-pass" = "latest"
-"brew-cask:slack" = "latest"                              # personal use too, so not the overlay
-"brew-cask:karabiner-elements" = "latest"
-"brew-cask:thunderbird" = "latest"
-"brew-cask:proton-mail-bridge" = "latest"
-"brew-cask:vorssaint" = "latest"
-"brew-cask:font-monaspace" = "latest"
-"brew-cask:font-symbols-only-nerd-font" = "latest"
-"brew-cask:font-sketchybar-app-font" = "latest"
 
 # ---------------------------------------------------------------- dotfiles --
 # Enumerated, never a wildcard: mise rejects a wildcard plus a specific entry
@@ -169,11 +131,10 @@ NSGlobalDomain."com.apple.mouse.scaling" = 1.0              # seeded from a trac
 # [tasks.bootstrap].
 
 [bootstrap.hooks.pre-packages]
-# The only path to everything in a third-party tap; see the note in
-# [bootstrap.packages]. Always on, so it can no longer be a fallback nobody
-# remembers to set. The script names those packages, and update:apps upgrades
-# the same list through it.
-run = "{{ config_root }}/bin/brew-tap-packages install"  # absolute: a bare path would follow the caller's cwd
+# Installs the Brewfiles. It warns instead of failing, so dotfiles, defaults,
+# mise's tools and the tasks still apply when brew fails. The path is
+# absolute, because a bare one would follow the caller's cwd.
+run = "{{ config_root }}/bin/brew-packages install || echo 'bootstrap: bin/brew-packages install failed; the rest of bootstrap still applies' >&2"
 
 [bootstrap.hooks.post-defaults]
 run = "{{ config_root }}/bin/macos-post-defaults"  # a bare relative path would depend on the caller's cwd

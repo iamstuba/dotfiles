@@ -2,9 +2,8 @@
 # includes "work". The installer writes ~/.config/mise/miserc.toml with
 # env = ["work"] when told to; that file is never tracked. MISE_ENV
 # cannot live in a mise.toml because it decides which mise.toml files load.
-# It holds the work Mac's tools, env, settings, JDK postinstall and tasks, and
-# the packages it adds.
-# Packages it turns off are in the repo-root mise.work.toml.
+# It holds the work Mac's tools, env, settings, JDK postinstall and tasks.
+# Its Homebrew packages are in Brewfile.work.
 
 [tools]
 # Only the work Mac uses gitlab.com, so glab lives here. brew:glab is the
@@ -44,17 +43,6 @@ kubectl = "latest"
 k6 = "latest"
 # HashiCorp's vault, the one the work repos run.
 vault = "latest"
-
-[bootstrap.packages]
-# Homebrew builds the docker CLI from source, and mise's docker-cli takes its
-# first download on trust.
-"brew:docker" = "latest"
-# mise's aws-cli unpacks a .pkg that has no checksum, and mise never checks
-# its signature. A codesign check after the install would cover one
-# executable, not the Python files beside it. Homebrew pins the bottle's
-# sha256. The cost is a Homebrew Python, and update:apps upgrades it, not
-# update:tools.
-"brew:awscli" = "latest"
 
 [env]
 # Telemetry doubles every request the bar's chip makes, and reports usage.
