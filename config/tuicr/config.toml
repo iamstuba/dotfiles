@@ -4,5 +4,5 @@
 # shipping a release a week.
 theme = "tokyo-night-storm"
 editor = "nvim"
-# mise owns the version, so tuicr should not check for its own updates.
+# brew owns the version, so tuicr should not check for its own updates.
 no_update_check = true

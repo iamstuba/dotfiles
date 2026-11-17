@@ -14,15 +14,19 @@ export MISE_USE_VERSIONS_HOST_TRACK=false MISE_DISABLE_UPDATE_WARNING=1 MISE_MIN
 # Stops aube's warm-up request to npm.jsr.io. No mise config can, and .zshenv
 # says why. The installer runs under sh, which never reads .zshenv.
 export AUBE_DISABLE_SPECULATIVE_TLS=1
+# The installer runs under sh, which never reads .zprofile, so this is the
+# line that puts brew's tools on PATH. Bootstrap's task calls bat, jq and
+# claude, which the shared Brewfile installs.
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$PATH"
 
 die() { echo "install: $*" >&2; exit 1; }
 case "${1:-}" in "") ;; --dry-run) DRY_RUN=1 ;; *) die "unknown argument $1" ;; esac
 DOTFILES=${DOTFILES:-$HOME/projects/iamstuba/dotfiles}
 
 
-# Names the Claude Code mise manages, so nobody installs a second copy to
-# debug with. mise x fetches it if bootstrap has not. Before the clone exists
-# there is nothing to cd into.
+# Names a Claude Code that mise x fetches on its own, so the hint works even
+# when brew is what failed. Before the clone exists there is nothing to cd
+# into.
 on_exit() {
   status=$?
   if [ "$status" != 0 ]; then

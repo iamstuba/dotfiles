@@ -109,7 +109,9 @@ if command -v fzf >/dev/null; then
 --color=info:#545c7e --color=marker:#ff007c --color=pointer:#ff007c --color=prompt:#2ac3de \
 --color=query:#c0caf5:regular --color=scrollbar:#27a1b9 --color=separator:#ff9e64 \
 --color=spinner:#ff007c"
-  source <(fzf --zsh)
+  # The key bindings need a terminal. Without one, the script's restore of
+  # the zle option prints "can't change option: zle" twice.
+  [[ -t 0 ]] && source <(fzf --zsh)
 fi
 
 command -v zoxide >/dev/null && eval "$(zoxide init zsh)"

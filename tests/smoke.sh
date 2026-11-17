@@ -3684,17 +3684,15 @@ tools_in() {
 
 tools_map() {
   # Inventory key, then the commands it installs, which is not the key wherever
-  # a backend prefix or a package name differs from the binary: ripgrep installs
-  # rg, github-cli installs gh, gitlab:gitlab-org/cli installs glab. A key
-  # missing from this table fails below, so a tool added to [tools] cannot go
-  # unasserted by being forgotten.
+  # a backend prefix or a package name differs from the binary: github-cli
+  # installs gh, gitlab:gitlab-org/cli installs glab. A key missing from this
+  # table fails below, so a tool added to [tools] cannot go unasserted by being
+  # forgotten.
   #
   # Read off a real install rather than guessed: every tool here was installed
   # into a throwaway HOME on 2026-09-13 with mise 2026.9.6 and the binaries
-  # listed. Only the commands a tool is wanted for are asserted, so pnpm's pn,
-  # pnpx and pnx and node's corepack, npm and npx are left out. yq joined
-  # [tools] after that run, with the parser swap above; its release archive
-  # carries one binary and it is named yq. glab was installed the same way on
+  # listed. Only the commands a tool is wanted for are asserted, so node's
+  # corepack, npm and npx are left out. glab was installed the same way on
   # 2026-10-27 with mise 2026.10.15, and its one binary is glab. docker-compose,
   # buildx and the osxkeychain helper were installed the same way on 2026-11-03
   # with mise 2026.10.20, each one binary under the name below. java, rust,
@@ -3708,21 +3706,6 @@ tools_map() {
   # everything must resolve is the thing that is wrong, not this table.
   cat <<'MAP'
 node node
-pnpm pnpm
-fzf fzf
-fd fd
-ripgrep rg
-zoxide zoxide
-bat bat
-jq jq
-yq yq
-yazi yazi ya
-starship starship
-glow glow
-shellcheck shellcheck
-github:agavra/tuicr tuicr
-delta delta
-lazygit lazygit
 github-cli gh
 gitlab:gitlab-org/cli glab
 java java keytool
@@ -3736,15 +3719,8 @@ github:docker/docker-credential-helpers docker-credential-osxkeychain
 kubectl kubectl
 k6 k6
 vault vault
-aqua:neovim/neovim nvim
-stylua stylua
-lua-language-server lua-language-server
 marksman marksman
-npm:vscode-langservers-extracted vscode-css-language-server vscode-eslint-language-server vscode-html-language-server vscode-json-language-server vscode-markdown-language-server
-npm:yaml-language-server yaml-language-server
-npm:bash-language-server bash-language-server
 herdr herdr
-claude claude
 pi pi
 MAP
 }

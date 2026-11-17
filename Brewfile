@@ -12,6 +12,34 @@ brew "btop"                             # aqua entry is Linux-only
 brew "zsh-autosuggestions"
 brew "zsh-syntax-highlighting"
 brew "fzf-tab"
+
+brew "pnpm"
+brew "fzf"
+brew "fd"
+brew "ripgrep"
+brew "zoxide"
+brew "bat"
+brew "jq"
+brew "yq"
+brew "yazi"
+brew "starship"
+brew "glow"
+brew "shellcheck"
+brew "tuicr"
+brew "git-delta"
+brew "lazygit"
+
+# Neovim and its language servers. marksman stays on mise. The npm servers
+# pull in Homebrew's node, which mise's node stays ahead of on PATH.
+# TypeScript, Oxlint and oxfmt are not here: each repo pins its own, and a
+# global one on PATH runs instead wherever the command is typed bare.
+brew "neovim"
+brew "stylua"
+brew "lua-language-server"
+brew "vscode-langservers-extracted"
+brew "yaml-language-server"
+brew "bash-language-server"
+
 # Source builds, no bottles, so these two are the slow part of a fresh Mac.
 brew "FelixKratz/formulae/sketchybar"
 brew "FelixKratz/formulae/borders"
@@ -23,3 +51,4 @@ cask "vorssaint"
 cask "font-monaspace"
 cask "font-symbols-only-nerd-font"
 cask "font-sketchybar-app-font"
+cask "claude-code@latest"                # the channel mise's claude tracked

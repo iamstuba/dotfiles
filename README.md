@@ -72,7 +72,7 @@ mise run update:all
 ```
 
 Runs, in order: `update:dotfiles` (fast-forward this repo when on main), `update:tools`
-(mise and every tool, and on a personal Mac pi's extensions and a list of
+(mise and every tool mise installs, and on a personal Mac pi's extensions and a list of
 outdated herdr integrations), `update:apps` (every Homebrew package), `update:plugins` (Neovim). Run `mise upgrade --dry-run`
 and `bin/brew-packages upgrade --dry-run` first on a new machine.
 

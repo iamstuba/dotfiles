@@ -3,7 +3,7 @@
 # herdr and pi, which a work Mac does not get.
 
 [settings]
-minimum_release_age_excludes = ["pi"]  # appends to config.toml's list
+minimum_release_age_excludes = ["pi"]
 
 [tools]
 herdr = "latest"

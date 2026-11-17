@@ -4,7 +4,6 @@
 
 [settings]
 minimum_release_age = "7d"                      # reaches tool backends, never casks
-minimum_release_age_excludes = ["claude"]
 idiomatic_version_file_enable_tools = ["node"]
 # Stops the report mise sends its versions host before each install. The host
 # itself stays on, because without it a fresh Mac's version lookups go to
@@ -19,43 +18,16 @@ system_packages.managers = []
 system_packages.sudo = false
 
 [tools]
-node = "lts"        # stays first: the npm: tools run on it
-pnpm = "latest"
-
-fzf = "latest"
-fd = "latest"
-ripgrep = "latest"
-zoxide = "latest"
-bat = "latest"
-jq = "latest"
-yq = "latest"
-yazi = "latest"
-starship = "latest"
-glow = "latest"
-shellcheck = "latest"
-"github:agavra/tuicr" = "latest" # not in the registry; brew:tuicr is the fallback
-
-delta = "latest"
-lazygit = "latest"
+# The shared Brewfile installs the other CLI tools, Neovim and Claude Code.
+node = "lts"        # stays first, so an npm: tool added later runs on it
 github-cli = "latest" # the installer needs it before the clone exists
 
-# mise owns every language server; mason is out. TypeScript, Oxlint and oxfmt
-# are not here: each repo pins its own, and a global one on PATH runs instead
-# wherever the command is typed bare.
-"aqua:neovim/neovim" = "latest" # the registry default is a vfox plugin
-stylua = "latest"
-lua-language-server = "latest"
+# marksman stays on mise, because Homebrew deprecated it. The shared Brewfile
+# installs the other language servers; mason is out.
 marksman = "latest"
-"npm:vscode-langservers-extracted" = "latest"
-"npm:yaml-language-server" = "latest"
-"npm:bash-language-server" = "latest"
-
-claude = "latest"
-
-# Tools and packages are separate inventories and fail separately.
 
 [tasks."update:tools"]
-description = "Update mise itself and every tool in the manifest."
+description = "Update mise itself and every tool mise installs."
 run = """
   mise self-update -y
   # It runs after the self-update, so the completion matches the new mise.
