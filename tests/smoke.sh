@@ -25,7 +25,7 @@ for f in install.sh tests/smoke.sh bin/* home/.local/bin/*; do
 done
 # The zsh files carry no shebang, because they are sourced and never run.
 if command -v zsh >/dev/null 2>&1; then
-  for f in home/.zshenv config/zsh/.zprofile config/zsh/.zshrc \
+  for f in home/.zshenv config/zsh/.zshenv config/zsh/.zprofile config/zsh/.zshrc \
            config/zsh/aliases.zsh config/zsh/functions.zsh; do
     [ -f "$f" ] || continue
     zsh -n "$f" || fail "syntax $f"
@@ -1561,8 +1561,10 @@ if command -v bat >/dev/null 2>&1; then
    HOME=$bat_home bat --list-themes 2>/dev/null) | grep -qx 'tokyonight_night' \
     || fail "bat: the theme does not resolve through the symlink"
   # #c0caf5 is the theme's foreground. A silent fallback paints something else.
+  # bat writes 24-bit colour only when COLORTERM says the terminal takes it, so
+  # without this the check passes in Ghostty and fails under env -i or ssh.
   (unset XDG_CONFIG_HOME XDG_CACHE_HOME
-   HOME=$bat_home BAT_THEME=tokyonight_night bat --color=always --style=plain \
+   HOME=$bat_home BAT_THEME=tokyonight_night COLORTERM=truecolor bat --color=always --style=plain \
      "$root/config/ripgrep/config" 2>/dev/null) | grep -q '38;2;192;202;245' \
     || fail "bat: rendered colours do not come from the tracked theme"
   rm -rf "$bat_home"
@@ -1728,12 +1730,14 @@ if command -v git >/dev/null 2>&1; then
     raw=$(git_probe -C "$delta_repo" log -p -1 --no-color) \
       || fail "delta: git log failed in the fixture repo"
     # Exported, not prefixed. A prefix binds to the printf, and delta is the
-    # process that wants the config.
+    # process that wants the config. COLORTERM is set for the reason the bat
+    # block sets it, because delta reads it the same way.
     rendered=$(unset XDG_CONFIG_HOME XDG_CACHE_HOME
                cd "$delta_repo"
                HOME=$git_home
                GIT_CONFIG_NOSYSTEM=1
-               export HOME GIT_CONFIG_NOSYSTEM
+               COLORTERM=truecolor
+               export HOME GIT_CONFIG_NOSYSTEM COLORTERM
                printf '%s\n' "$raw" | delta --paging=never) \
       || fail "delta: rendering the diff failed"
     # #243e4a is plus-style's background, #4a272f is minus-style's, both from the
