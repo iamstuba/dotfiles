@@ -9,11 +9,15 @@ Any Mac this repo bootstraps. Each is either a personal Mac or the work Mac. `~/
 _Avoid_: laptop, host, machine, personal machine
 
 **Manifest**:
-The two tracked mise config files that together declare what every Mac gets. The global file (`config/mise/config.toml`, symlinked) holds tools and settings; the repo-root `mise.toml` holds packages, the symlink map, macOS defaults and hooks. Both hold tasks, split by whether the task can reach the repo through `{{ config_root }}`: the global file is read from outside the clone, so tasks there cannot.
-_Avoid_: Brewfile, package list
+The tracked files that together declare what every Mac gets: two mise config files and the shared Brewfile. The global mise file (`config/mise/config.toml`, symlinked) holds the tools Homebrew does not deliver, and settings; the repo-root `mise.toml` holds the symlink map, macOS defaults and hooks. Both mise files hold tasks, split by whether the task can reach the repo through `{{ config_root }}`: the global file is read from outside the clone, so tasks there cannot.
+_Avoid_: package list
+
+**Brewfile**:
+A tracked list of the Homebrew formulae, casks and taps a Mac gets, installed through the Mac's `brew` from the pre-packages hook. The shared `Brewfile` is part of the manifest, and each overlay adds its own. Every global tool Homebrew delivers is in one, on both kinds of Mac; mise keeps the rest.
+_Avoid_: bundle, package list
 
 **Overlay**:
-A pair of mise config files loaded only when `MISE_ENV` names them. Every Mac names exactly one, `work` or `personal`. Each overlay has one file beside each half of the manifest. The global `config/mise/config.<env>.toml` holds tools, settings, tasks, the packages the overlay adds and mise's `[hooks].postinstall`. The repo-root `mise.<env>.toml` holds packages marked absent, dotfiles, Hooks and tasks that need the clone, and links its own global file. Added packages can go in the global file because bootstrap reads `[bootstrap.packages]` from it. An absent mark there does nothing, because `mise.toml`'s declaration wins. mise cannot remove a tool, dotfile or task the manifest declares, so whatever one kind of Mac must not get lives in the other kind's overlay. The work overlay turns manifest packages off and adds the tools and packages only work uses.
+A pair of mise config files and a Brewfile, loaded only when `MISE_ENV` names them. Every Mac names exactly one, `work` or `personal`. Each overlay has one file beside each part of the manifest. The global `config/mise/config.<env>.toml` holds tools, settings, tasks and mise's `[hooks].postinstall`. The repo-root `mise.<env>.toml` holds dotfiles, Hooks and tasks that need the clone, and links its own global file. `Brewfile.<env>` holds the Homebrew packages only that kind of Mac gets. mise cannot remove a tool, dotfile or task the manifest declares, so whatever one kind of Mac must not get lives in the other kind's overlay.
 _Avoid_: profile, environment file, work manifest
 
 **Trust**:
@@ -21,7 +25,7 @@ mise refuses to load a config file no human has marked trusted. Bootstrap trusts
 _Avoid_: allow, approve, whitelist
 
 **Tap package**:
-A Homebrew formula or cask that lives in a third-party tap rather than homebrew-core. mise cannot resolve one, so these stay out of the manifest's packages and brew installs them directly.
+A Homebrew formula or cask that lives in a third-party tap rather than homebrew-core or homebrew-cask. A Brewfile names it with its tap.
 _Avoid_: brew fallback, source build, third-party formula
 
 **Workbrew's brew**:
