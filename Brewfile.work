@@ -23,6 +23,9 @@ brew "docker-buildx"
 # the token in the login keychain, not base64 in ~/.docker/config.json.
 brew "docker-credential-helper"
 brew "kubernetes-cli"
+# Work repos render their charts locally with helm template. A repo's own mise
+# pin wins inside it wherever mise is active.
+brew "helm"
 brew "k6"
 # prost-build finds protoc on PATH, so the work overlay sets no PROTOC.
 brew "protobuf"
