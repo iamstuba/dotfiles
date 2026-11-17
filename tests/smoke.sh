@@ -246,18 +246,22 @@ if "setup-agents:herdr" not in global_cfg.get("tasks", {}).get("setup-agents", {
 pi_setup = global_personal.get("tasks", {}).get("setup-agents:pi", {})
 if "setup-agents:herdr" not in pi_setup.get("depends", []):
     errs.append("setup-agents:pi does not depend on setup-agents:herdr, so `herdr integration install pi` can run before herdr is set up")
+if "setup-agents:pi" in global_personal.get("tasks", {}).get("setup-agents", {}).get("depends_post", []):
+    errs.append("config.personal.toml runs setup-agents:pi as depends_post, so herdr's half runs twice")
 
 # The global personal overlay holds pi's tool and tasks. A block named after
-# a config.toml task may carry depends_post and nothing else: run or
-# description there replaces the task instead of adding to it.
+# a config.toml task may carry depends or depends_post and nothing else: run
+# or description there replaces the task instead of adding to it.
 if set(global_personal) - {"tools", "settings", "tasks"}:
     errs.append(f"config.personal.toml carries unexpected tables: {sorted(set(global_personal) - {'tools', 'settings', 'tasks'})}")
 for name, task in global_personal.get("tasks", {}).items():
-    if name in global_cfg.get("tasks", {}) and set(task) != {"depends_post"}:
-        errs.append(f"config.personal.toml's {name} carries {sorted(task)}, not only depends_post")
-    for dep in task.get("depends_post", []):
+    if name in global_cfg.get("tasks", {}) and not set(task) <= {"depends", "depends_post"}:
+        errs.append(f"config.personal.toml's {name} carries {sorted(task)}, not only depends or depends_post")
+    # pi's own task may depend on herdr's, which config.toml defines.
+    added = task.get("depends", []) if name in global_cfg.get("tasks", {}) else []
+    for dep in added + task.get("depends_post", []):
         if dep not in global_personal.get("tasks", {}):
-            errs.append(f"config.personal.toml's {name} runs {dep} after it, which the file never defines")
+            errs.append(f"config.personal.toml's {name} runs {dep}, which the file never defines")
 
 for target, src in {**root.get("dotfiles", {}), **personal.get("dotfiles", {}), **root_work.get("dotfiles", {})}.items():
     source = src if isinstance(src, str) else src.get("source", "")

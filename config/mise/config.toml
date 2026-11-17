@@ -145,7 +145,7 @@ run = """
 [tasks.setup-agents]
 description = "Clear Claude Code's stray files and dead skill links."
 # Every line is safe to rerun. herdr's half runs first. config.personal.toml
-# adds pi's half after it.
+# adds pi's half, which waits for herdr's.
 depends = ["setup-agents:herdr"]
 run = """
   rm -f ~/.claude/keybindings.json ~/.claude/.DS_Store ~/.claude/skills/.DS_Store
