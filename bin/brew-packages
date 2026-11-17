@@ -55,10 +55,11 @@ fi
 bundle() { # $1: a Brewfile
   if [ "$action" = install ]; then
     # check first, so a bootstrapped Mac makes no network call, and
-    # --no-upgrade, so bootstrap never upgrades.
+    # --no-upgrade, so bootstrap never upgrades. Without it, check counts an
+    # outdated formula as missing, and every bootstrap reaches install.
     if [ "${DRY_RUN:-}" ]; then
-      printf '+ %s bundle check --file=%s || %s bundle install --no-upgrade --file=%s\n' "$brew" "$1" "$brew" "$1"
-    elif ! "$brew" bundle check --file="$1" >/dev/null; then
+      printf '+ %s bundle check --no-upgrade --file=%s || %s bundle install --no-upgrade --file=%s\n' "$brew" "$1" "$brew" "$1"
+    elif ! "$brew" bundle check --no-upgrade --file="$1" >/dev/null; then
       "$brew" bundle install --no-upgrade --file="$1"
     fi
   else

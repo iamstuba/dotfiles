@@ -516,7 +516,7 @@ for pick in both homebrew neither; do
   out=$(brew_packages "$wb" "$hb" work install --dry-run) || fail "brew-packages install --dry-run with $pick"
   echo "$out" | grep -qxF "+ (brew is $want)" || fail "brew-packages with $pick did not pick $want:
 $out"
-  echo "$out" | grep -qF "+ $want bundle check --file=$root/Brewfile || $want bundle install --no-upgrade --file=$root/Brewfile" \
+  echo "$out" | grep -qF "+ $want bundle check --no-upgrade --file=$root/Brewfile || $want bundle install --no-upgrade --file=$root/Brewfile" \
     || fail "brew-packages with $pick does not install the shared Brewfile through $want:
 $out"
   if [ "$pick" = neither ]; then
