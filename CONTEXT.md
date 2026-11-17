@@ -105,7 +105,7 @@ _Avoid_: CLAUDE.md, rules file, system prompt
 _Avoid_: settings template, base settings, tracked settings
 
 **Agent multiplexer**:
-The terminal layer that owns the panes coding agents run in and reports whether each is working, idle or blocked. herdr, on a personal Mac only. Does not queue work or restart agents.
+The terminal layer that owns the panes coding agents run in and reports whether each is working, idle or blocked. Blocked means the agent waits on the user, such as at a permission prompt. herdr, on every Mac. Does not queue work or restart agents.
 _Avoid_: orchestrator, harness, agent manager
 
 **Bar**:
