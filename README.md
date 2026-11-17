@@ -93,10 +93,8 @@ The first run asks to let the terminal control LibreWolf; allow it.
 
 What no task can do:
 
-- Karabiner-Elements updates itself. brew never upgrades it.
+- Karabiner-Elements, Ghostty and Vorssaint update through their own updaters. `update:apps` skips them because it doesn't pass `--greedy`.
 - AeroSpace is replaced while running and may lose its Accessibility grant. Re-grant and relaunch after an update.
-- Ghostty updates only through its own "check for updates".
-- Vorssaint updates itself. brew never upgrades it.
 
 ## Rerunning
 
