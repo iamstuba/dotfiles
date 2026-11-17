@@ -1308,6 +1308,10 @@ out=$(HOME=$tmp_home DOTFILES=$root DOTFILES_WORK=0 GIT_NAME=Test GIT_EMAIL=test
 for want in "$dry_installer" "+ (brew is $dry_brew/homebrew/bin/brew)" "+ $dry_brew/homebrew/bin/brew install gh"; do
   echo "$out" | grep -qxF -- "$want" || fail "install: a dry run with no brew did not print '$want': $out"
 done
+# install.sh copies bin/brew-packages's brew pick, so the two installer lines
+# must not drift apart.
+[ "$(grep -h '^ *installer=' install.sh | sed 's/^ *//')" = "$(grep -h '^ *installer=' bin/brew-packages | sed 's/^ *//')" ] \
+  || fail "install: install.sh and bin/brew-packages run different Homebrew installers"
 echo "$out" | grep -q 'ssh-keygen' || fail "install: key generation missing"
 echo "$out" | grep -q 'bootstrap --yes' || fail "install: bootstrap command missing"
 echo "$out" | grep -q 'run setup-git' || fail "install: setup-git command missing"
@@ -3428,7 +3432,6 @@ agents = [{"terminal_id": f"t{n}", "agent_status": s, "workspace_id": "w1", "tab
 print(json.dumps({"id": "cli:agent:list", "result": {"type": "agent_list", "agents": agents}}))
 EOF
 }
-bar_herdr_font="icon.font=Monaspace Neon:Regular:13.0"
 # herdr 0.9.5 prints its error as JSON on stdout and exits 1 when no server runs.
 bar_reset
 bar_fixture herdr '{"id":"cli:agent:list","error":{"code":"server_not_running","message":"no herdr server is running"}}' 1
@@ -3449,13 +3452,13 @@ bar_reset
 bar_fixture herdr "$(bar_herdr_json working idle blocked working done)"
 bar_run "herdr, 2 working and 1 blocked" plugins/herdr.sh herdr
 bar_log_is "herdr agent list
-$(bar_line --set herdr drawing=on icon=2 icon.drawing=on icon.color="$bar_accent" "$bar_herdr_font" \
+$(bar_line --set herdr drawing=on icon=2 icon.drawing=on icon.color="$bar_accent" \
   label=1 label.drawing=on label.color="$bar_red")"
 bar_reset
 bar_fixture herdr "$(bar_herdr_json working working idle)"
 bar_run "herdr, 2 working" plugins/herdr.sh herdr
 bar_log_is "herdr agent list
-$(bar_line --set herdr drawing=on icon=2 icon.drawing=on icon.color="$bar_accent" "$bar_herdr_font" \
+$(bar_line --set herdr drawing=on icon=2 icon.drawing=on icon.color="$bar_accent" \
   label.drawing=off)"
 bar_reset
 bar_fixture herdr "$(bar_herdr_json blocked idle)"

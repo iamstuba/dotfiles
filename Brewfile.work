@@ -1,5 +1,8 @@
 # Homebrew packages for the work Mac only, installed after the shared Brewfile.
 
+# HashiCorp's own vault, the one the work repos run.
+tap "hashicorp/tap"
+
 # Homebrew builds the docker CLI from source, and mise's docker-cli takes its
 # first download on trust.
 brew "docker"
@@ -29,6 +32,4 @@ brew "helm"
 brew "k6"
 # prost-build finds protoc on PATH, so the work overlay sets no PROTOC.
 brew "protobuf"
-# HashiCorp's own vault, the one the work repos run.
-tap "hashicorp/tap"
 brew "hashicorp/tap/vault"

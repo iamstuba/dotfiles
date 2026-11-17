@@ -61,7 +61,8 @@ sketchybar \
 # digits, so the padding keeps "2 1" from reading as 21. Hidden until an agent
 # works or blocks.
 sketchybar --add item herdr right \
-  --set herdr drawing=off update_freq=3 script="$plugins/herdr.sh" icon.padding_right=6
+  --set herdr drawing=off update_freq=3 script="$plugins/herdr.sh" icon.padding_right=6 \
+    icon.font="Monaspace Neon:Regular:13.0"
 
 # Added last, so they sit nearest the notch. The single quotes leave $NAME
 # for SketchyBar to expand at the click. review.sh fills the rows and gives

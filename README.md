@@ -28,7 +28,7 @@ System Settings
 
 Vorssaint
 
-- In the first-run picker, skip the ready setups and tick only these features: Command Bar, Clipboard, Clean URL, Cut & paste, Quit & close protection, Smooth scrolling, Invert mouse scrolling, Disable mouse acceleration, Music app blocker, Audio device priority. Leave the rest uninstalled: AeroSpace owns windows, Karabiner owns keys, Homebrew and mise own installs (so not Homebrew, App updates or Uninstaller), and bootstrap already sets the wallpaper and keeps Spaces in a fixed order.
+- In the first-run picker, skip the ready setups and tick only these features: Command Bar, Clipboard, Clean URL, Cut & paste, Quit & close protection, Smooth scrolling, Invert mouse scrolling, Disable mouse acceleration, Music app blocker, Audio device priority. Leave the rest uninstalled: AeroSpace owns windows, Karabiner owns keys, Homebrew and mise own installs (so not Vorssaint's own Homebrew, App updates or Uninstaller features), and bootstrap already sets the wallpaper and keeps Spaces in a fixed order.
 
 AeroSpace
 
@@ -74,7 +74,7 @@ mise run update:all
 Runs, in order: `update:dotfiles` (fast-forward this repo when on main), `update:tools`
 (mise and every tool mise installs, a list of outdated herdr integrations, and on a
 personal Mac pi's extensions), `update:apps` (every Homebrew package), `update:plugins` (Neovim). Run `mise upgrade --dry-run`
-and `bin/brew-packages upgrade --dry-run` first on a new machine.
+and `bin/brew-packages upgrade --dry-run` first on a new Mac.
 
 A tool set to `latest` stays on the version it first installed. Bootstrap and
 `mise install` keep that version, even one a repo's pin installed, and only

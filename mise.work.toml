@@ -26,8 +26,8 @@ run = """
   set -eu
   opt=${HOMEBREW_PREFIX:-/opt/homebrew}/opt
   mkdir -p "$HOME/.docker/cli-plugins"
-  for p in docker-compose docker-buildx; do
-    ln -sfn "$opt/$p/bin/$p" "$HOME/.docker/cli-plugins/$p"
+  for plugin in docker-compose docker-buildx; do
+    ln -sfn "$opt/$plugin/bin/$plugin" "$HOME/.docker/cli-plugins/$plugin"
   done
 """
 

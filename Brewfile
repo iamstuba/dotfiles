@@ -53,4 +53,4 @@ cask "vorssaint"
 cask "font-monaspace"
 cask "font-symbols-only-nerd-font"
 cask "font-sketchybar-app-font"
-cask "claude-code@latest"                # the channel mise's claude tracked
+cask "claude-code@latest"                # plain claude-code is the stable channel, releases behind

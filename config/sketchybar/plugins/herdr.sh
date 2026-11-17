@@ -23,7 +23,7 @@ fi
 
 args=(--set "$NAME" drawing=on)
 if ((working > 0)); then
-  args+=(icon="$working" icon.drawing=on icon.color="$ACCENT" icon.font="Monaspace Neon:Regular:13.0")
+  args+=(icon="$working" icon.drawing=on icon.color="$ACCENT")
 else
   args+=(icon.drawing=off)
 fi
