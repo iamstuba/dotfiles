@@ -376,7 +376,7 @@ for path, var in (("config/starship.toml", "STARSHIP_JSON"),
 for name in ("bootstrap", "setup-git", "setup-claude", "refresh-unslop", "check"):
     if name not in root.get("tasks", {}):
         errs.append(f"repo-root task missing: {name}")
-for name in ("update:tools", "update:apps", "update:plugins", "update:dotfiles", "update:all", "setup-agents"):
+for name in ("update:tools", "update:apps", "update:plugins", "update:dotfiles", "update:all", "setup-agents", "setup-completions"):
     if name not in global_cfg.get("tasks", {}):
         errs.append(f"global task missing: {name}")
 

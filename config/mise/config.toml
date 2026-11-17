@@ -52,7 +52,22 @@ claude = "latest"
 description = "Update mise itself and every tool in the manifest."
 run = """
   mise self-update -y
+  # It runs after the self-update, so the completion matches the new mise.
+  mise run setup-completions
   mise upgrade
+"""
+
+[tasks.setup-completions]
+description = "Write mise's zsh completion where .zshrc puts it on fpath."
+# A file costs nothing per shell, where `eval "$(mise completion zsh)"` costs
+# 20 ms. The temp file keeps a failed run from leaving an empty _mise. The
+# dump records only that _mise defines mise, and zsh reads the body from the
+# file the first time a shell completes mise, so a rewrite needs no rebuild.
+run = """
+  dir=~/.local/share/zsh/site-functions
+  mkdir -p "$dir"
+  mise completion zsh > "$dir/_mise.new"
+  mv "$dir/_mise.new" "$dir/_mise"
 """
 
 [tasks."update:apps"]

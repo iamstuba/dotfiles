@@ -24,14 +24,42 @@ setopt NO_LIST_BEEP          # an ambiguous completion is not worth a beep
 REPORTTIME=10                # print timings for anything that runs over 10 seconds
 
 # ------------------------------------------------------------- completion --
+# Nothing sets HOMEBREW_PREFIX here, because .zprofile exports a literal PATH
+# instead of running `brew shellenv`, so the default stands in for it. The
+# plugins section below uses the same variable.
+_brew_share="${HOMEBREW_PREFIX:-/opt/homebrew}/share"
+
+# Brew formulae install their completions into site-functions. The
+# setup-completions task writes mise's into a directory the user owns. -C
+# reads only the dump, so a new file shows up at the next full check, or at
+# once after `rm ~/.zcompdump`.
+for _d in "$_brew_share/zsh/site-functions" \
+          "$HOME/.local/share/zsh/site-functions"; do
+  [[ -d $_d ]] && fpath=("$_d" $fpath)
+done
+unset _d
+
 # The dump sits in $HOME for the same reason HISTFILE does. The glob matches
 # only when the dump is over 24 hours old; the fpath security scan is worth
 # paying for once a day, and -C skips it every other time.
+#
+# Under Workbrew the workbrew account owns site-functions, so the audit would
+# prompt on every full check. -u skips the audit there. It protects nothing,
+# because the plugins below are sourced from the same tree on every shell. It
+# would also skip the audit for any directory a later line adds to fpath
+# before this point.
+#
+# A full compinit leaves the dump alone unless the number of completion files
+# or the zsh version changed. Without the touch, the dump never ages out of
+# the glob and every shell pays for the full check. compinit returns 1 when the audit prompt is
+# answered no, and then the dump stays stale so the next shell asks again.
 autoload -Uz compinit
 if [[ -f $HOME/.zcompdump && -z $HOME/.zcompdump(#qN.mh+24) ]]; then
   compinit -C -d "$HOME/.zcompdump"
+elif [[ -x /opt/workbrew/bin/brew ]]; then
+  compinit -u -d "$HOME/.zcompdump" && touch "$HOME/.zcompdump"
 else
-  compinit -d "$HOME/.zcompdump"
+  compinit -d "$HOME/.zcompdump" && touch "$HOME/.zcompdump"
 fi
 
 # Smart case: doc<TAB> finds Documents, and DOC<TAB> falls back to ignoring case.
@@ -55,13 +83,10 @@ zstyle ':completion:*:messages' format '%d'
 zstyle ':completion:*:warnings' format 'No matches for: %d'
 
 # ---------------------------------------------------------------- plugins --
-# Sourced by path, no plugin manager. Nothing sets HOMEBREW_PREFIX here,
-# because .zprofile exports a literal PATH instead of running `brew shellenv`,
-# so the default below stands in for it. The order below is what the
-# plugins themselves require. fzf-tab has to come after compinit and before
-# anything that wraps widgets, and syntax highlighting stops colouring unless
-# it is dead last.
-_brew_share="${HOMEBREW_PREFIX:-/opt/homebrew}/share"
+# Sourced by path from $_brew_share, set above compinit, with no plugin
+# manager. The order below is what the plugins themselves require. fzf-tab has
+# to come after compinit and before anything that wraps widgets, and syntax
+# highlighting stops colouring unless it is dead last.
 # The formula installs fzf-tab.zsh; upstream's README names fzf-tab.plugin.zsh,
 # which does not exist here.
 [ -r "$_brew_share/fzf-tab/fzf-tab.zsh" ] && source "$_brew_share/fzf-tab/fzf-tab.zsh"

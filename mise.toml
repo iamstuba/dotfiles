@@ -192,6 +192,7 @@ run = [
 description = "Runs after the tools phase with the manifest's tools on PATH."
 run = [
   "bat cache --build",  # delta and bat fall back silently without it
+  "mise run setup-completions",
   # Repo-local on purpose: a --global write would land in the tracked git config.
   "git -C {{ config_root }} config filter.pi-settings.clean \"jq 'del(.lastChangelogVersion)'\"",
   "mise run setup-agents",
