@@ -40,9 +40,13 @@ min_version = "2026.8.15"  # last release that changed the dotfiles semantics we
 # agents. One shared instruction file, which mise.personal.toml also links
 # into pi so the rules cannot disagree between them. file-level like lazygit
 # above, because herdr's integration refuses a symlinked directory and
-# setup-agents:herdr runs it on a personal Mac. ~/.claude/settings.json is no
-# link: tools write into it, so setup-claude merges the shared keys instead.
+# setup-agents:herdr runs it. ~/.claude/settings.json is no link: tools write
+# into it, so setup-claude merges the shared keys instead.
 "~/.claude/CLAUDE.md" = "home/.agents/AGENTS.md"
+
+# herdr. file-level, because its config directory also holds the socket, the logs,
+# session.json and the installed plugins.
+"~/.config/herdr/config.toml" = "config/herdr/config.toml"
 
 # file-level, so the untracked config.local beside it stays out of the clone.
 "~/.config/ghostty/config.ghostty" = "config/ghostty/config.ghostty"
@@ -212,6 +216,40 @@ run = """
   } > "$file.new"
   mv "$file.new" "$file"
   rm -f "$body"
+"""
+
+[tasks.refresh-herdr-plugin]
+description = "Move the Plannotator lite plugin's commit and binary hash pins to the plugin repo's main."
+# Never from update:all. A pin that moves on its own would no longer catch a
+# replaced release. Review the diff before committing it.
+run = """
+  set -eu
+  file="{{ config_root }}/config/mise/config.toml"
+  repo=plannotator/herdr-annotate
+  for pin in plugin_ref plugin_sha256; do
+    [ "$(grep -c "^  $pin=" "$file")" = 1 ] || { echo "refresh-herdr-plugin: no single $pin line in $file"; exit 1; }
+  done
+  ref=$(git ls-remote "https://github.com/$repo.git" refs/heads/main | cut -f1)
+  [ -n "$ref" ] || { echo "refresh-herdr-plugin: $repo has no main"; exit 1; }
+  # The build hook downloads the release this file names, so the hash follows it.
+  version=$(curl -fsSL "https://raw.githubusercontent.com/$repo/$ref/herdr-annotate.version" | tr -d '[:space:]')
+  [ -n "$version" ] || { echo "refresh-herdr-plugin: no herdr-annotate.version at $ref"; exit 1; }
+  tmp=$(mktemp -d)
+  trap 'rm -rf "$tmp"' EXIT
+  base="https://github.com/$repo/releases/download/rust-lite-v$version"
+  asset=herdr-annotate-aarch64-apple-darwin
+  curl -fsSL --retry 3 -o "$tmp/$asset" "$base/$asset"
+  curl -fsSL --retry 3 -o "$tmp/SHA256SUMS" "$base/SHA256SUMS"
+  sha=$(shasum -a 256 "$tmp/$asset" | cut -d' ' -f1)
+  # A corrupt download must not become the pin.
+  grep -qx "$sha  $asset" "$tmp/SHA256SUMS" || { echo "refresh-herdr-plugin: $asset does not match $base/SHA256SUMS"; exit 1; }
+  awk -v ref="$ref" -v sha="$sha" '
+    /^  plugin_ref=/ { print "  plugin_ref=" ref; next }
+    /^  plugin_sha256=/ { print "  plugin_sha256=" sha; next }
+    { print }
+  ' "$file" > "$file.new"
+  mv "$file.new" "$file"
+  echo "refresh-herdr-plugin: pinned $ref, herdr-annotate $version, sha256 $sha"
 """
 
 [tasks.check]

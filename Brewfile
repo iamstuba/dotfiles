@@ -29,6 +29,7 @@ brew "tuicr"
 brew "git-delta"
 brew "lazygit"
 brew "gh"                               # install.sh installs it first, for the GitHub login
+brew "herdr"
 
 # Neovim and its language servers. marksman stays on mise. The npm servers
 # pull in Homebrew's node, which mise's node stays ahead of on PATH.

@@ -195,11 +195,10 @@ for target in personal.get("dotfiles", {}):
     if target in root.get("dotfiles", {}):
         errs.append(f"{target} is in both mise.toml and mise.personal.toml, so work gets it too")
 if "~/.config/mise/config.personal.toml" not in personal.get("dotfiles", {}):
-    errs.append("mise.personal.toml no longer links config.personal.toml, so a personal Mac loses pi and herdr")
+    errs.append("mise.personal.toml no longer links config.personal.toml, so a personal Mac loses pi")
 
-# pi and herdr are personal-only. Anything of theirs in either half of the
-# manifest reaches the work Mac, because mise cannot switch off what a loaded
-# file declares.
+# pi is personal-only. Anything of pi's in either half of the manifest reaches
+# the work Mac, because mise cannot switch off what a loaded file declares.
 def strings(x):
     if isinstance(x, str):
         yield x
@@ -215,8 +214,6 @@ def strings(x):
 personal_only = {
     "pi": (("pi", "pi-coding-agent"), "~/.pi",
            re.compile(r"(?:^|[\s;&|(`])pi(?:\s|$)|~/\.pi\b")),
-    "herdr": (("herdr",), "~/.config/herdr",
-              re.compile(r"(?:^|[\s;&|(`])herdr(?:\s|$)|~/\.config/herdr\b")),
 }
 for name, cfg in (("config/mise/config.toml", global_cfg), ("mise.toml", root)):
     for tool, (keys, link_dir, cmd) in personal_only.items():
@@ -232,17 +229,27 @@ for name, cfg in (("config/mise/config.toml", global_cfg), ("mise.toml", root)):
                     errs.append(f"{name} runs {tool}: {line.strip()!r}")
     if "pi" in cfg.get("settings", {}).get("minimum_release_age_excludes", []):
         errs.append(f"{name} excludes pi from the release age; config.personal.toml does")
-if "herdr" not in global_personal.get("tools", {}):
-    errs.append("config.personal.toml does not declare herdr, so a personal Mac loses it")
-if "~/.config/herdr/config.toml" not in personal.get("dotfiles", {}):
-    errs.append("mise.personal.toml does not link ~/.config/herdr/config.toml, so a personal Mac loses herdr's config")
+# herdr runs on both Macs, so the shared half holds its link and setup task,
+# and neither personal file names either. The Brewfile check below finds its
+# package.
+if root.get("dotfiles", {}).get("~/.config/herdr/config.toml") != "config/herdr/config.toml":
+    errs.append("mise.toml does not link ~/.config/herdr/config.toml, so herdr runs on its defaults, every call home on")
+for target in personal.get("dotfiles", {}):
+    if target == "~/.config/herdr" or target.startswith("~/.config/herdr/"):
+        errs.append(f"mise.personal.toml links {target}; herdr's links are in mise.toml")
+if "herdr" in global_personal.get("tools", {}):
+    errs.append("config.personal.toml declares herdr; the shared Brewfile installs it")
+if "setup-agents:herdr" in global_personal.get("tasks", {}):
+    errs.append("config.personal.toml defines setup-agents:herdr, so a work Mac loses herdr's integration")
+if "setup-agents:herdr" not in global_cfg.get("tasks", {}).get("setup-agents", {}).get("depends", []):
+    errs.append("config.toml's setup-agents does not depend on setup-agents:herdr, so no Mac installs herdr's integration")
 pi_setup = global_personal.get("tasks", {}).get("setup-agents:pi", {})
 if "setup-agents:herdr" not in pi_setup.get("depends", []):
     errs.append("setup-agents:pi does not depend on setup-agents:herdr, so `herdr integration install pi` can run before herdr is set up")
 
-# The global personal overlay holds pi's and herdr's tools and tasks. A
-# block named after a config.toml task may carry depends_post and nothing
-# else: run or description there replaces the task instead of adding to it.
+# The global personal overlay holds pi's tool and tasks. A block named after
+# a config.toml task may carry depends_post and nothing else: run or
+# description there replaces the task instead of adding to it.
 if set(global_personal) - {"tools", "settings", "tasks"}:
     errs.append(f"config.personal.toml carries unexpected tables: {sorted(set(global_personal) - {'tools', 'settings', 'tasks'})}")
 for name, task in global_personal.get("tasks", {}).items():
@@ -306,6 +313,10 @@ for p in sorted(pathlib.Path(".").glob("Brewfile*")):
             errs.append(f"{p}:{n} is not one tap, brew or cask with a quoted name, greedy: true only on a cask: {line!r}")
         elif m.group(1) != "tap":
             brew_names[m.group(2).rsplit("/", 1)[-1]] = f"{p}:{n}"
+            if m.group(2) == "herdr" and p.name != "Brewfile":
+                errs.append(f"{p}:{n} installs herdr, which the shared Brewfile installs for both Macs")
+if "herdr" not in brew_names:
+    errs.append("no Brewfile installs herdr, so neither Mac gets it")
 # No tool from two sources. A renamed tool, such as git-delta against delta,
 # slips through, so each move drops its mise entry in the same commit.
 for name, cfg in (("config/mise/config.toml", global_cfg), ("config/mise/config.work.toml", work),
@@ -344,7 +355,7 @@ for path, var in (("config/starship.toml", "STARSHIP_JSON"),
             if "name" in rule:
                 errs.append(f"{path} has a [filetype] rule keyed on name; yazi wants url")
 
-for name in ("bootstrap", "setup-git", "setup-claude", "refresh-unslop", "check"):
+for name in ("bootstrap", "setup-git", "setup-claude", "refresh-unslop", "refresh-herdr-plugin", "check"):
     if name not in root.get("tasks", {}):
         errs.append(f"repo-root task missing: {name}")
 for name in ("update:tools", "update:apps", "update:plugins", "update:dotfiles", "update:all", "setup-agents", "setup-completions"):
@@ -2376,8 +2387,9 @@ env_loads() {
   case "${MISE_ENV:-}" in *"$1"*) return 0 ;; esac
   grep -qs "^env *=.*\"$1\"" "${XDG_CONFIG_HOME:-$HOME/.config}/mise/miserc.toml"
 }
-# herdr is personal-only. An earlier install can leave a mise shim on PATH
-# that fails on every call, so the checks below ask whether herdr runs.
+# herdr runs on every Mac. A leftover mise shim can still be on PATH and fail
+# on every call, so the checks below ask whether herdr runs, not whether it
+# is found.
 herdr_runs() { herdr --version >/dev/null 2>&1; }
 
 # herdr's own pi extension is the listener on the other end. It is
@@ -2417,9 +2429,7 @@ if herdr_runs; then
   fi
   ok "herdr config check"
 else
-  # A personal Mac declares herdr, so there it is a failure, not a skip.
-  if env_loads personal; then fail "herdr is declared on this Mac but does not run"; fi
-  printf 'skip herdr config check: herdr does not run here\n'
+  fail "herdr does not run here, and the shared Brewfile installs it on every Mac"
 fi
 
 # The four Plannotator keys, by command name. `config check` passes a file whose
@@ -3699,7 +3709,6 @@ node node
 java java keytool
 rust cargo rustc rustup rustfmt cargo-clippy rust-analyzer
 marksman marksman
-herdr herdr
 pi pi
 MAP
 }

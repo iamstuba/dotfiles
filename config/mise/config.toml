@@ -26,12 +26,13 @@ node = "lts"        # stays first, so an npm: tool added later runs on it
 marksman = "latest"
 
 [tasks."update:tools"]
-description = "Update mise itself and every tool mise installs."
+description = "Update mise itself and every tool mise installs, then list outdated herdr integrations."
 run = """
   mise self-update -y
   # It runs after the self-update, so the completion matches the new mise.
   mise run setup-completions
   mise upgrade
+  herdr integration status --outdated-only
 """
 
 [tasks.setup-completions]
@@ -106,10 +107,46 @@ run = [
   { task = "update:plugins" },
 ]
 
+[tasks."setup-agents:herdr"]
+description = "Check herdr's config, then install its Claude Code integration and the Plannotator plugin."
+# herdr refuses a symlinked directory, so ~/.claude stays real. Every line is
+# safe to rerun. Not every line is free. The plugin install refetches its
+# binary through a build hook on each run.
+run = """
+  set -eu
+  dir="${XDG_CONFIG_HOME:-$HOME/.config}/herdr"
+  # herdr falls back to every default when its config is missing or does not
+  # parse, which turns both background checks back on.
+  [ -f "$dir/config.toml" ] || { echo "setup-agents:herdr: $dir/config.toml is missing" >&2; exit 1; }
+  herdr config check
+  mkdir -p ~/.claude
+  herdr integration install claude
+  # Pinned to a commit, not a tag. The one published tag, rust-lite-v0.1.0, runs
+  # all four actions through bun, which is in no part of this manifest and on
+  # neither Mac, so pinning there would bind four keys to commands that fail on
+  # every press. The build hook checks the binary only against SHA256SUMS from
+  # the same release, which can be replaced, so its hash is pinned here too.
+  # Only `mise run refresh-herdr-plugin` or a hand edit moves the two pins.
+  plugin_ref=7c8f5a177b8285dc56efc471ef04f7ab44a2b4b6
+  plugin_sha256=2234392a1cedf4b0b0561b4ca54da75aa5139df296dbd4e59371cf7fa201fab7
+  # The flags follow the repo, not the subcommand. herdr 0.9.0 folds anything
+  # before the positional into the owner and exits 2.
+  herdr plugin install plannotator/herdr-annotate/lite -y --ref "$plugin_ref"
+  checkout=$(jq -r '.[] | select(.plugin_id == "annotate") | .source.managed_path' "$dir/plugins.json")
+  got=$(shasum -a 256 "$checkout/bin/herdr-annotate.exe" | cut -d' ' -f1)
+  if [ "$got" != "$plugin_sha256" ]; then
+    # Uninstalled, so no key runs a binary nobody reviewed.
+    herdr plugin uninstall annotate || true
+    echo "setup-agents:herdr: herdr-annotate.exe has sha256 $got, not the pinned $plugin_sha256; uninstalled it" >&2
+    exit 1
+  fi
+"""
+
 [tasks.setup-agents]
 description = "Clear Claude Code's stray files and dead skill links."
-# Every line is safe to rerun. config.personal.toml adds herdr's and pi's
-# halves.
+# Every line is safe to rerun. herdr's half runs first. config.personal.toml
+# adds pi's half after it.
+depends = ["setup-agents:herdr"]
 run = """
   rm -f ~/.claude/keybindings.json ~/.claude/.DS_Store ~/.claude/skills/.DS_Store
   # A local copy of unslop shadows the rules inlined into the shared
