@@ -59,8 +59,7 @@ run() { if [ "${DRY_RUN:-}" ]; then printf '+ %s\n' "$*"; else "$@"; fi; }
 # The overlay's [env] never reaches the installer, so glab's is set here, the
 # same three as setup-git sets.
 glab() {
-  GLAB_CONFIG_DIR=$HOME/.config/glab-cli GLAB_SEND_TELEMETRY=0 GITLAB_HOST=gitlab.com \
-    "$mise" x gitlab:gitlab-org/cli -- glab "$@"
+  GLAB_CONFIG_DIR=$HOME/.config/glab-cli GLAB_SEND_TELEMETRY=0 GITLAB_HOST=gitlab.com command glab "$@"
 }
 ask() {
   eval "val=\${$1:-}"
@@ -166,6 +165,8 @@ export GIT_NAME GIT_EMAIL GIT_PROFILES
 # Work only, by miserc, so a personal Mac never logs into GitLab. A
 # login on a host with credentials always asks to re-authenticate, so check first.
 if [ "$machine_env" = work ]; then
+  # Brewfile.work lists glab too, but the GitLab login needs it now.
+  [ -x "$prefix/bin/glab" ] || run "$brew" install glab
   if [ "${DRY_RUN:-}" ]; then
     echo "+ glab config get user --host gitlab.com || glab auth login --hostname gitlab.com --web -g ssh"
   elif [ -z "$(glab config get user --host gitlab.com 2>/dev/null || true)" ]; then

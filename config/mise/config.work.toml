@@ -6,9 +6,6 @@
 # Its Homebrew packages are in Brewfile.work.
 
 [tools]
-# Only the work Mac uses gitlab.com, so glab lives here. brew:glab is the
-# fallback; aqua's entry lists no versions and carries no checksum.
-"gitlab:gitlab-org/cli" = "latest"
 # Temurin is the JDK the work repos' images and CI build on. The [hooks]
 # postinstall below imports the keychain's CAs into every JDK mise installs.
 java = "temurin-25"
@@ -19,30 +16,6 @@ java = "temurin-25"
 # no rust-docs, and no clippy or rustfmt unless the file lists them. A
 # profile or components named in the file still win.
 rust = { version = "latest", profile = "minimal", components = ["clippy", "rustfmt", "rust-analyzer"], postinstall = "rustup set auto-self-update disable && rustup set profile minimal" }
-# prost-build finds protoc on PATH, so the overlay sets no PROTOC and installs
-# no cmake.
-protoc = "latest"
-# Colima runs the docker engine in a Lima VM. The user starts and stops it
-# by hand, so it runs only when asked. Lima on its own is the fallback
-# runtime.
-colima = "latest"
-lima = "latest"
-# Compose v2 is a docker CLI plugin. The postinstall reruns on every upgrade,
-# so the link in ~/.docker/cli-plugins always names the installed version.
-docker-compose = { version = "latest", postinstall = 'mkdir -p "$HOME/.docker/cli-plugins" && ln -sfn "$MISE_TOOL_INSTALL_PATH/docker-compose" "$HOME/.docker/cli-plugins/docker-compose"' }
-# The release binary is named buildx-<version>.darwin, and docker loads a
-# plugin only as docker-<name>, so bin renames it. Its postinstall links it
-# the way compose's does.
-"github:docker/buildx" = { version = "latest", bin = "docker-buildx", postinstall = 'mkdir -p "$HOME/.docker/cli-plugins" && ln -sfn "$MISE_TOOL_INSTALL_PATH/docker-buildx" "$HOME/.docker/cli-plugins/docker-buildx"' }
-# On PATH, it makes docker login set credsStore and keep the token in the
-# login keychain, not base64 in ~/.docker/config.json. The release also
-# carries a pass helper for macOS, so matching picks this one.
-"github:docker/docker-credential-helpers" = { version = "latest", bin = "docker-credential-osxkeychain", matching = "osxkeychain" }
-# mise checks a sha256 for kubectl, k6 and vault before it unpacks them.
-kubectl = "latest"
-k6 = "latest"
-# HashiCorp's vault, the one the work repos run.
-vault = "latest"
 
 [env]
 # Telemetry doubles every request the bar's chip makes, and reports usage.

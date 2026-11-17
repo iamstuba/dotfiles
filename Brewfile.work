@@ -9,3 +9,23 @@ brew "docker"
 # sha256. The cost is a Homebrew Python, and update:apps upgrades it, not
 # update:tools.
 brew "awscli"
+# Only the work Mac uses gitlab.com.
+brew "glab"
+# Colima runs the docker engine in a Lima VM. The user starts and stops it by
+# hand, so it runs only when asked. Lima on its own is the fallback runtime.
+brew "colima"
+brew "lima"
+# docker loads both only from ~/.docker/cli-plugins, which mise.work.toml's
+# setup-docker links to their opt paths.
+brew "docker-compose"
+brew "docker-buildx"
+# On PATH, its osxkeychain helper makes docker login set credsStore and keep
+# the token in the login keychain, not base64 in ~/.docker/config.json.
+brew "docker-credential-helper"
+brew "kubernetes-cli"
+brew "k6"
+# prost-build finds protoc on PATH, so the work overlay sets no PROTOC.
+brew "protobuf"
+# HashiCorp's own vault, the one the work repos run.
+tap "hashicorp/tap"
+brew "hashicorp/tap/vault"

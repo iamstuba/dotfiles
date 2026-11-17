@@ -4,13 +4,9 @@
 # config/mise/config.work.toml.
 
 [dotfiles]
-# The global overlay itself, glab's docker credential helper and Colima's
-# template. glab writes its own copy of the helper into the install dir of the
-# glab version that ran, which the next upgrade drops; this one stays. The
-# template is a file link, because a linked directory would put the VM disk
-# in the clone.
+# The global overlay itself and Colima's template. The template is a file
+# link, because a linked directory would put the VM disk in the clone.
 "~/.config/mise/config.work.toml" = "config/mise/config.work.toml"
-"~/.local/bin/docker-credential-glab" = "home/.local/bin/docker-credential-glab"
 "~/.local/share/colima/_templates/default.yaml" = "home/.local/share/colima/_templates/default.yaml"
 
 [tasks."setup-claude:work"]
@@ -21,3 +17,20 @@ run = '"{{ config_root }}/bin/merge-claude-settings" "{{ config_root }}/home/.cl
 # adding to it, and a description would replace its description.
 [tasks.setup-claude]
 depends_post = ["setup-claude:work"]
+
+# docker finds a plugin only by its name in ~/.docker/cli-plugins. The opt
+# path follows each brew upgrade, so the links never name a removed version.
+[tasks.setup-docker]
+description = "Link brew's docker compose and buildx into docker's plugin dir."
+run = """
+  set -eu
+  opt=${HOMEBREW_PREFIX:-/opt/homebrew}/opt
+  mkdir -p "$HOME/.docker/cli-plugins"
+  for p in docker-compose docker-buildx; do
+    ln -sfn "$opt/$p/bin/$p" "$HOME/.docker/cli-plugins/$p"
+  done
+"""
+
+# No run or description, for setup-claude's reason.
+[tasks.bootstrap]
+depends_post = ["setup-docker"]

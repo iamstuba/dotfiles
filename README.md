@@ -51,7 +51,7 @@ LibreWolf, on a personal Mac only
 GitLab, on the work Mac only
 
 - The first `git clone` from gitlab.com asks to confirm its host key. Compare it with the [SSH fingerprints GitLab publishes for gitlab.com](https://docs.gitlab.com/user/gitlab_com/#ssh-host-keys-fingerprints) before you answer yes.
-- Run `glab auth configure-docker` once, so `docker` pulls from GitLab's container registry through glab.
+- Run `glab auth configure-docker` once, so `docker` pulls from GitLab's container registry through glab. glab writes its credential helper to `~/.local/bin`.
 
 Containers, on the work Mac only
 
@@ -120,9 +120,9 @@ file does not exist, and `mise run check` warns when it finds one.
 - `mise.toml`: symlink map, macOS defaults, hooks, repo-bound tasks.
 - `Brewfile`: every Homebrew package for every Mac. `Brewfile.work` and `Brewfile.personal` add the packages only that kind of Mac gets. `bin/brew-packages` installs and upgrades them.
 - `config/mise/config.toml`: tools, settings, update tasks. Symlinked to `~/.config/mise/`.
-- `config/mise/config.work.toml`: loaded when `MISE_ENV` includes `work`. It holds the work-only tools, such as glab and the docker plugins. It also holds their env and settings, the JDK CA postinstall and `ca:refresh`.
+- `config/mise/config.work.toml`: loaded when `MISE_ENV` includes `work`. It holds java and rust, the work env and settings, the JDK CA postinstall and `ca:refresh`. glab, the container tools, kubectl, k6, protoc and vault are in `Brewfile.work`.
 - `config/mise/config.personal.toml`: pi, herdr and their tasks, loaded when `MISE_ENV` includes `personal`.
-- `mise.work.toml`: the work-only links such as glab's docker credential helper and the Colima template, and the task that merges the work Claude Code settings. `mise.personal.toml`: the dotfiles, pi's and herdr's among them, the bundled app removal and the LibreWolf policies a work Mac must not get. Each links its own global overlay. The installer sets `MISE_ENV` to exactly one of `work` and `personal`.
+- `mise.work.toml`: the work-only links such as the Colima template, the task that merges the work Claude Code settings, and `setup-docker`, which bootstrap runs to link brew's compose and buildx into `~/.docker/cli-plugins`. `mise.personal.toml`: the dotfiles, pi's and herdr's among them, the bundled app removal and the LibreWolf policies a work Mac must not get. Each links its own global overlay. The installer sets `MISE_ENV` to exactly one of `work` and `personal`.
 - `config/`: mirrors `~/.config`. `home/`: mirrors `$HOME` for everything outside `~/.config`. `bin/`: scripts on PATH.
 - `install.sh`, `tests/smoke.sh`, `assets/`.
 

@@ -103,21 +103,15 @@ for name, task in work.get("tasks", {}).items():
     for dep in task.get("depends_post", []):
         if dep not in work.get("tasks", {}):
             errs.append(f"config.work.toml's {name} runs {dep} after it, which the file never defines")
-# Only the work Mac uses gitlab.com, so glab and its env live in this overlay
-# and nowhere a personal Mac loads.
-if work.get("tools", {}).get("gitlab:gitlab-org/cli") != "latest":
-    errs.append("work overlay does not declare \"gitlab:gitlab-org/cli\" = \"latest\", so the work Mac has no glab")
+# Only the work Mac uses gitlab.com, so glab's env lives in this overlay and
+# nowhere a personal Mac loads.
 if work.get("env", {}).get("GLAB_SEND_TELEMETRY") != "0":
     errs.append("work overlay does not set GLAB_SEND_TELEMETRY = \"0\", so glab reports usage")
 if work.get("env", {}).get("GLAB_CONFIG_DIR") != "{{ env.HOME }}/.config/glab-cli":
     errs.append("work overlay does not pin GLAB_CONFIG_DIR to ~/.config/glab-cli, so a GUI-launched glab misses the login")
-for p in sorted([*pathlib.Path(".").glob("mise*.toml"), *pathlib.Path("config/mise").glob("*.toml")]):
-    if p != pathlib.Path("config/mise/config.work.toml") and "gitlab:" in p.read_text():
-        errs.append(f"{p} names gitlab:, which belongs only in config/mise/config.work.toml")
-# Every work tool and package, by what follows its backend prefix, so the same
-# repo under another backend is caught too. The repo's owner stays in, so
-# gitlab-org/cli does not claim every other */cli. A personal Mac loads these
-# files.
+# Every work tool, by what follows its backend prefix, so the same repo under
+# another backend is caught too. The repo's owner stays in, so one owner's
+# cli does not claim every other */cli. A personal Mac loads these files.
 def bare_name(key):
     return key.split(":", 1)[-1]
 # A registry short name such as lima names no owner, so it is the same tool as
@@ -172,7 +166,6 @@ if "setup-claude" in work.get("tasks", {}):
 # mise.personal.toml.
 work_links = {
     "~/.config/mise/config.work.toml": "config/mise/config.work.toml",
-    "~/.local/bin/docker-credential-glab": "home/.local/bin/docker-credential-glab",
     "~/.local/share/colima/_templates/default.yaml": "home/.local/share/colima/_templates/default.yaml",
 }
 if root_work.get("dotfiles", {}) != work_links:
@@ -821,62 +814,18 @@ kj_run "$kj_refresh" '' MISE_DATA_DIR="$kj/data" || fail "ca:refresh exited nonz
 [ "$(wc -l <"$kj/log" | tr -d ' ')" -eq $((kca_extra + 1)) ] || fail "ca:refresh called keytool for more than b: $(cat "$kj/log")"
 ok "keychain-ca jdk"
 
-# Each docker plugin's postinstall, run as mise runs it against fake install
-# dirs. docker finds a plugin only by its name in ~/.docker/cli-plugins, and
-# the second version stands in for an upgrade, which must move the link.
-dp=$tmp_home/docker-plugins
-for dp_pair in docker-compose=docker-compose github:docker/buildx=docker-buildx; do
-  dp_key=${dp_pair%=*} dp_bin=${dp_pair#*=}
-  dp_cmd=$(printf '%s' "$work_json" | jq -r --arg k "$dp_key" '.tools[$k].postinstall // ""') \
-    || fail "docker plugins: could not read $dp_key's postinstall"
-  [ -n "$dp_cmd" ] || fail "docker plugins: $dp_key has no postinstall, so docker never finds $dp_bin"
-  for dp_v in 1.0.0 1.0.1; do
-    dp_path=$dp/installs/$dp_bin/$dp_v
-    mkdir -p "$dp_path"
-    : >"$dp_path/$dp_bin"
-    (cd "$tmp_home" && env -i PATH=/usr/bin:/bin HOME="$dp/home" MISE_TOOL_INSTALL_PATH="$dp_path" /bin/sh -c "$dp_cmd") \
-      || fail "docker plugins: $dp_key's postinstall failed on $dp_v"
-    dp_link=$dp/home/.docker/cli-plugins/$dp_bin
-    [ -L "$dp_link" ] && [ "$(readlink "$dp_link")" = "$dp_path/$dp_bin" ] \
-      || fail "docker plugins: after $dp_key $dp_v, $dp_link is not a link to its $dp_bin: $(ls -l "$dp_link" 2>&1)"
-  done
-done
-[ "$(ls "$dp/home/.docker")" = cli-plugins ] \
-  || fail "docker plugins: the postinstalls wrote more than cli-plugins into ~/.docker: $(ls "$dp/home/.docker")"
-ok "docker plugins"
-
-# glab's docker credential helper hands docker's verb, its stdin and glab's exit status through
-# unchanged, which is all docker's credential helper protocol needs.
-gs=$tmp_home/glab-shim
-mkdir -p "$gs"
-cat >"$gs/glab" <<'EOF'
-#!/bin/sh
-printf '%s\n' "$*" >"$GS_LOG"
-cat >>"$GS_LOG"
-exit "${GS_EXIT:-0}"
-EOF
-chmod +x "$gs/glab"
-printf 'registry.gitlab.com\n' | GS_LOG=$gs/log PATH="$gs:/usr/bin:/bin" home/.local/bin/docker-credential-glab get \
-  || fail "docker-credential-glab exited nonzero, so docker gets no registry.gitlab.com login"
-[ "$(cat "$gs/log")" = "auth docker-helper get
-registry.gitlab.com" ] || fail "docker-credential-glab called glab as: $(cat "$gs/log")"
-gs_status=0
-GS_LOG=$gs/log GS_EXIT=3 PATH="$gs:/usr/bin:/bin" home/.local/bin/docker-credential-glab get </dev/null || gs_status=$?
-[ "$gs_status" -eq 3 ] || fail "docker-credential-glab exited $gs_status when glab exited 3, so docker misreads a failed lookup"
-ok "docker-credential-glab"
-
 # setup-git and install.sh, run for real in a temp HOME. The forge CLIs,
 # ssh-keygen and ssh-add are stubs that log their arguments, so nothing
 # reaches GitHub, GitLab or the keychain. gh and glab keep what they were given
 # in the case's state directory and answer from it, so a rerun sees what the
 # first run did. setup-git's DOTFILES names a directory with no clone, so no
-# remote is flipped. gh sits apart from the others, because the installer
-# must find it only where its brew installed it.
+# remote is flipped. gh and glab sit apart from the others, because the
+# installer must find them only where its brew installed them.
 # The git section probes these homes, so the path is physical for the reason
 # it gives there.
 sg=$(cd "$tmp_home" && pwd -P)/setup-git
-mkdir -p "$sg/stubs" "$sg/gh-stub"
-cat >"$sg/gh-stub/gh" <<'EOF'
+mkdir -p "$sg/stubs" "$sg/brew-tools"
+cat >"$sg/brew-tools/gh" <<'EOF'
 #!/bin/sh
 echo "gh $*" >>"$SG_LOG"
 case "$1 $2" in
@@ -891,7 +840,7 @@ EOF
 # env itself. A call without it logs as such and fails the log comparison.
 # SG_GLAB_ADD=taken fails the upload with GitLab's duplicate-key error, and
 # SG_GLAB_ADD=fail with a 401.
-cat >"$sg/stubs/glab" <<'EOF'
+cat >"$sg/brew-tools/glab" <<'EOF'
 #!/bin/sh
 if [ "${GLAB_CONFIG_DIR:-}" = "$HOME/.config/glab-cli" ] && [ "${GLAB_SEND_TELEMETRY:-}" = 0 ] \
   && [ "${GITLAB_HOST:-}" = gitlab.com ]; then
@@ -920,7 +869,7 @@ echo stub >"$f"
 echo "ssh-ed25519 AAAAstub-$(basename "$f") stub" >"$f.pub"
 EOF
 printf '#!/bin/sh\necho "ssh-add $*" >>"$SG_LOG"\n' >"$sg/stubs/ssh-add"
-chmod +x "$sg"/stubs/* "$sg/gh-stub/gh"
+chmod +x "$sg"/stubs/* "$sg"/brew-tools/*
 # The installer's own stubs, kept off setup-git's PATH. sudo logs all but the
 # keepalive's -n calls. sleep is short, so the keepalive loop ends a second
 # after the installer does instead of a minute.
@@ -961,11 +910,11 @@ cat >"$sg/brew-stub" <<EOF
 #!/bin/sh
 case "\$0" in */workbrew/bin/brew) name=workbrew ;; *) name=homebrew ;; esac
 echo "\$name \$*" >>"\$SG_LOG"
-if [ "\$*" = "install gh" ]; then
+case "\$*" in "install gh" | "install glab")
   prefix=\$(cd "\$(dirname "\$0")/../.." && pwd)/homebrew
   mkdir -p "\$prefix/bin"
-  ln -s "$sg/gh-stub/gh" "\$prefix/bin/gh"
-fi
+  ln -s "$sg/brew-tools/\$2" "\$prefix/bin/\$2" ;;
+esac
 EOF
 chmod +x "$sg"/install-stubs/* "$sg/brew-stub"
 
@@ -990,7 +939,7 @@ sg_run() { # $1: case name, then NAME=value pairs and setup-git's arguments
   shift
   : >"$c/log"
   # env -i keeps the caller's DRY_RUN, GIT_* and XDG_* out of the run.
-  (cd "$c" && env -i PATH="$sg/stubs:$sg/gh-stub:/usr/bin:/bin" HOME="$c/home" SG_LOG="$c/log" SG_STATE="$c/state" \
+  (cd "$c" && env -i PATH="$sg/stubs:$sg/brew-tools:/usr/bin:/bin" HOME="$c/home" SG_LOG="$c/log" SG_STATE="$c/state" \
     DOTFILES="$c/no-clone" GIT_NAME='Test Person' "$@" </dev/null >"$c/out" 2>&1)
 }
 sg_install() { # $1: case name, then NAME=value pairs
@@ -1004,7 +953,7 @@ sg_install() { # $1: case name, then NAME=value pairs
   # The clone and the scratch clone already exist, so the installer clones
   # nothing. The Command Line Tools check reads the real /Library, and
   # smoke cannot run on a Mac without them. The brews are the case's, from
-  # sg_brews, so this Mac's own brew and gh stay out of it.
+  # sg_brews, so this Mac's own brew, gh and glab stay out of it.
   (cd "$c" && env -i PATH="$sg/install-stubs:$sg/stubs:/usr/bin:/bin" HOME="$c/home" SG_LOG="$c/log" \
     SG_ENV_LOG="$c/env-log" SG_STATE="$c/state" DOTFILES="$c/clone" GIT_NAME='Test Person' GIT_PROFILES= \
     DOTFILES_WORKBREW_BREW="$c/workbrew/bin/brew" DOTFILES_HOMEBREW_BREW="$c/homebrew/bin/brew" "$@" \
@@ -1255,7 +1204,7 @@ ok "install.sh, a personal Mac"
 
 # The work Mac, fresh: the GitLab login right after the work question, the
 # GitLab key right after the GitHub key, then setup-git uploads it. Both brews
-# exist, and gh comes from Workbrew's. A rerun of both asks for nothing,
+# exist, and gh and glab come from Workbrew's. A rerun of both asks for nothing,
 # sends nothing and installs nothing.
 sg_case install-work ""
 sg_brews install-work workbrew homebrew
@@ -1266,9 +1215,8 @@ sg_log_is install-work "sudo -v
 workbrew install gh
 gh auth status
 gh auth login -w -p ssh --skip-ssh-key -s admin:public_key,admin:ssh_signing_key
-mise x gitlab:gitlab-org/cli -- glab config get user --host gitlab.com
+workbrew install glab
 glab config get user --host gitlab.com
-mise x gitlab:gitlab-org/cli -- glab auth login --hostname gitlab.com --web -g ssh
 glab auth login --hostname gitlab.com --web -g ssh
 ssh-keygen -t ed25519 -C work@example.com -f $h/.ssh/id_ed25519_github
 ssh-add --apple-use-keychain $h/.ssh/id_ed25519_github
@@ -1299,7 +1247,6 @@ sg_install install-work GIT_EMAIL=work@example.com \
   || fail "install.sh work rerun exited nonzero: $(cat "$sg/install-work/out")"
 sg_log_is install-work "sudo -v
 gh auth status
-mise x gitlab:gitlab-org/cli -- glab config get user --host gitlab.com
 glab config get user --host gitlab.com
 $(sg_install_tail install-work work)"
 [ "$(sg_snap install-work)" = "$before" ] || fail "install.sh work rerun changed files"
@@ -1356,7 +1303,8 @@ echo "$out" | grep -qE 'keychain-ca|colima' && fail "install: a personal dry run
 out=$(HOME=$tmp_home DOTFILES=$root DOTFILES_WORK=1 GIT_NAME=Test GIT_EMAIL=test@example.com GIT_PROFILES= \
   DOTFILES_WORKBREW_BREW="$dry_brew/workbrew/bin/brew" DOTFILES_HOMEBREW_BREW="$dry_brew/homebrew/bin/brew" \
   sh install.sh --dry-run 2>&1) || fail "install.sh --dry-run (work)"
-for want in "+ (brew is $dry_brew/workbrew/bin/brew)" "+ $dry_brew/workbrew/bin/brew install gh"; do
+for want in "+ (brew is $dry_brew/workbrew/bin/brew)" "+ $dry_brew/workbrew/bin/brew install gh" \
+  "+ $dry_brew/workbrew/bin/brew install glab"; do
   echo "$out" | grep -qxF -- "$want" || fail "install: a dry run with Workbrew's brew did not print '$want': $out"
 done
 echo "$out" | grep -qF 'Homebrew/install' && fail "install: a dry run with Workbrew's brew printed Homebrew's installer"
@@ -3205,13 +3153,12 @@ bar_fixture aerospace.windows '' 1
 bar_run "workspaces, aerospace failing" plugins/workspaces.sh workspace.1
 bar_log_is "aerospace list-windows --all --format %{workspace}|%{app-name}"
 
-# gh is a Homebrew tool, so its stub sits only in the temp HOMEBREW_PREFIX's
-# bin, and glab is a mise tool, so its stub sits only in the shims directory.
-# bar_run leaves both off PATH. Each answers from a fixture per subcommand,
-# such as gh.api, and glab records the variables it saw.
+# gh and glab are Homebrew tools, so their stubs sit only in the temp
+# HOMEBREW_PREFIX's bin, and bar_run leaves that off PATH. Each answers from a
+# fixture per subcommand, such as gh.api, and glab records the variables it
+# saw.
 bar_brew_bin=$bar/homebrew/bin
-bar_shims=$bar/.local/share/mise/shims
-mkdir -p "$bar_brew_bin" "$bar_shims"
+mkdir -p "$bar_brew_bin"
 cat >"$bar_brew_bin/gh" <<'EOF'
 #!/bin/sh
 echo "gh $*" >>"$BAR_LOG"
@@ -3219,7 +3166,7 @@ key=gh.$1
 if [ -f "$BAR_FIX/$key" ]; then cat "$BAR_FIX/$key"; fi
 exit "$(cat "$BAR_FIX/$key.exit" 2>/dev/null || echo 0)"
 EOF
-cat >"$bar_shims/glab" <<'EOF'
+cat >"$bar_brew_bin/glab" <<'EOF'
 #!/bin/sh
 echo "glab $*" >>"$BAR_LOG"
 echo "$GLAB_CONFIG_DIR $GLAB_SEND_TELEMETRY $GITLAB_HOST $GLAB_CHECK_UPDATE" >>"$BAR_FIX/glab.env"
@@ -3227,7 +3174,7 @@ key=glab.$1
 if [ -f "$BAR_FIX/$key" ]; then cat "$BAR_FIX/$key"; fi
 exit "$(cat "$BAR_FIX/$key.exit" 2>/dev/null || echo 0)"
 EOF
-chmod +x "$bar_brew_bin/gh" "$bar_shims"/*
+chmod +x "$bar_brew_bin"/*
 # The stub sketchybar's log line for these arguments.
 bar_line() { python3 -c 'import shlex, sys; print(shlex.join(sys.argv[1:]))' sketchybar "$@"; }
 
@@ -3343,9 +3290,9 @@ bar_log_is "$(bar_line --set review.github popup.drawing=off)"
 
 # A personal Mac has no glab at all.
 bar_reset
-mv "$bar_shims/glab" "$bar/glab.away"
+mv "$bar_brew_bin/glab" "$bar/glab.away"
 bar_run "gitlab chip, no glab" plugins/review.sh review.gitlab gitlab
-mv "$bar/glab.away" "$bar_shims/glab"
+mv "$bar/glab.away" "$bar_brew_bin/glab"
 bar_log_is "$(bar_line --set review.gitlab drawing=off popup.drawing=off)"
 # glab config get reads only the config file, so it costs no request.
 bar_reset
@@ -3733,40 +3680,24 @@ tools_in() {
 
 tools_map() {
   # Inventory key, then the commands it installs, which is not the key wherever
-  # a backend prefix or a package name differs from the binary:
-  # gitlab:gitlab-org/cli installs glab. A key missing from this
-  # table fails below, so a tool added to [tools] cannot go unasserted by being
-  # forgotten.
+  # a backend prefix or a package name differs from the binary. A key missing
+  # from this table fails below, so a tool added to [tools] cannot go
+  # unasserted by being forgotten.
   #
   # Read off a real install rather than guessed: every tool here was installed
   # into a throwaway HOME on 2026-09-13 with mise 2026.9.6 and the binaries
   # listed. Only the commands a tool is wanted for are asserted, so node's
-  # corepack, npm and npx are left out. glab was installed the same way on
-  # 2026-10-27 with mise 2026.10.15, and its one binary is glab. docker-compose,
-  # buildx and the osxkeychain helper were installed the same way on 2026-11-03
-  # with mise 2026.10.20, each one binary under the name below. java, rust,
-  # protoc, kubectl, k6 and vault were installed the same way on 2026-11-03
-  # with mise 2026.10.20. rust links its install dir to ~/.cargo/bin, which
-  # holds rustup's proxies. kubectl, k6 and vault are one binary each, named
-  # after the key.
+  # corepack, npm and npx are left out. java and rust were installed the same
+  # way on 2026-11-03 with mise 2026.10.20. rust links its install dir to
+  # ~/.cargo/bin, which holds rustup's proxies.
   #
   # An exception carries `-` in place of its commands and a reason after a #.
   # There are none. If this list ever reaches two or three, the rule that
   # everything must resolve is the thing that is wrong, not this table.
   cat <<'MAP'
 node node
-gitlab:gitlab-org/cli glab
 java java keytool
 rust cargo rustc rustup rustfmt cargo-clippy rust-analyzer
-protoc protoc
-colima colima
-lima limactl
-docker-compose docker-compose
-github:docker/buildx docker-buildx
-github:docker/docker-credential-helpers docker-credential-osxkeychain
-kubectl kubectl
-k6 k6
-vault vault
 marksman marksman
 herdr herdr
 pi pi
