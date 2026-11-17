@@ -2,9 +2,10 @@
 # $1: github or gitlab. Each forge's fetch prints the total count, then up to
 # ten repo<TAB>number<TAB>title<TAB>url rows, and fails when the chip should
 # hide. The renderer below never sees forge JSON.
-# gh and glab are mise tools, off SketchyBar's PATH. jq is macOS's own, so
-# the shims stay out of each poll's jq.
-export PATH=$HOME/.local/share/mise/shims:$PATH
+# gh is a Homebrew tool and glab a mise tool, both off SketchyBar's PATH.
+# Homebrew's bin comes first, so gh never goes through a mise shim. jq is
+# macOS's own, called by path, so no poll's jq goes through either.
+export PATH=${HOMEBREW_PREFIX:-/opt/homebrew}/bin:$HOME/.local/share/mise/shims:$PATH
 
 hide() { sketchybar --set "$NAME" drawing=off popup.drawing=off; }
 

@@ -870,12 +870,13 @@ ok "docker-credential-glab"
 # reaches GitHub, GitLab or the keychain. gh and glab keep what they were given
 # in the case's state directory and answer from it, so a rerun sees what the
 # first run did. setup-git's DOTFILES names a directory with no clone, so no
-# remote is flipped.
+# remote is flipped. gh sits apart from the others, because the installer
+# must find it only where its brew installed it.
 # The git section probes these homes, so the path is physical for the reason
 # it gives there.
 sg=$(cd "$tmp_home" && pwd -P)/setup-git
-mkdir -p "$sg/stubs"
-cat >"$sg/stubs/gh" <<'EOF'
+mkdir -p "$sg/stubs" "$sg/gh-stub"
+cat >"$sg/gh-stub/gh" <<'EOF'
 #!/bin/sh
 echo "gh $*" >>"$SG_LOG"
 case "$1 $2" in
@@ -919,13 +920,16 @@ echo stub >"$f"
 echo "ssh-ed25519 AAAAstub-$(basename "$f") stub" >"$f.pub"
 EOF
 printf '#!/bin/sh\necho "ssh-add $*" >>"$SG_LOG"\n' >"$sg/stubs/ssh-add"
-chmod +x "$sg"/stubs/*
+chmod +x "$sg"/stubs/* "$sg/gh-stub/gh"
 # The installer's own stubs, kept off setup-git's PATH. sudo logs all but the
 # keepalive's -n calls. sleep is short, so the keepalive loop ends a second
 # after the installer does instead of a minute.
 mkdir -p "$sg/install-stubs"
 printf '#!/bin/sh\n[ "$1" = -n ] || echo "sudo $*" >>"$SG_LOG"\n' >"$sg/install-stubs/sudo"
 printf '#!/bin/sh\nexec /bin/sleep 1\n' >"$sg/install-stubs/sleep"
+# A run that reached Homebrew's installer logs its fetch and gets nothing,
+# so no case can install Homebrew for real.
+printf '#!/bin/sh\necho "curl $*" >>"$SG_LOG"\nexit 22\n' >"$sg/install-stubs/curl"
 # Installed at ~/.local/bin/mise, where the installer looks. x runs the tool
 # through to its stub, and anything else only logs. SG_ENV_LOG gets the
 # three settings and aube's two switches each call ran under.
@@ -950,7 +954,20 @@ state=missing
 [ -d "${COLIMA_HOME:-/nonexistent}" ] && state=exists
 echo "keychain-ca $* COLIMA_HOME=${COLIMA_HOME-unset} $state" >>"$SG_LOG"
 EOF
-chmod +x "$sg"/install-stubs/*
+# Copied to a case's workbrew/bin/brew or homebrew/bin/brew, and logged under
+# that name. Either one installs into the case's Homebrew prefix, as
+# Workbrew's brew does into /opt/homebrew.
+cat >"$sg/brew-stub" <<EOF
+#!/bin/sh
+case "\$0" in */workbrew/bin/brew) name=workbrew ;; *) name=homebrew ;; esac
+echo "\$name \$*" >>"\$SG_LOG"
+if [ "\$*" = "install gh" ]; then
+  prefix=\$(cd "\$(dirname "\$0")/../.." && pwd)/homebrew
+  mkdir -p "\$prefix/bin"
+  ln -s "$sg/gh-stub/gh" "\$prefix/bin/gh"
+fi
+EOF
+chmod +x "$sg"/install-stubs/* "$sg/brew-stub"
 
 sg_case() { # $1: case name, $2: the env miserc names, or nothing for no miserc
   rm -rf "${sg:?}/$1"
@@ -960,12 +977,20 @@ sg_case() { # $1: case name, $2: the env miserc names, or nothing for no miserc
     printf 'env = ["%s"]\n' "$2" >"$sg/$1/home/.config/mise/miserc.toml"
   fi
 }
+sg_brews() { # $1: case name, then workbrew, homebrew or both: the brews that exist
+  c=$sg/$1
+  shift
+  for b in "$@"; do
+    mkdir -p "$c/$b/bin"
+    cp "$sg/brew-stub" "$c/$b/bin/brew"
+  done
+}
 sg_run() { # $1: case name, then NAME=value pairs and setup-git's arguments
   c=$sg/$1
   shift
   : >"$c/log"
   # env -i keeps the caller's DRY_RUN, GIT_* and XDG_* out of the run.
-  (cd "$c" && env -i PATH="$sg/stubs:/usr/bin:/bin" HOME="$c/home" SG_LOG="$c/log" SG_STATE="$c/state" \
+  (cd "$c" && env -i PATH="$sg/stubs:$sg/gh-stub:/usr/bin:/bin" HOME="$c/home" SG_LOG="$c/log" SG_STATE="$c/state" \
     DOTFILES="$c/no-clone" GIT_NAME='Test Person' "$@" </dev/null >"$c/out" 2>&1)
 }
 sg_install() { # $1: case name, then NAME=value pairs
@@ -978,9 +1003,11 @@ sg_install() { # $1: case name, then NAME=value pairs
   cp "$sg/clone-stubs/keychain-ca" "$c/clone/bin/keychain-ca"
   # The clone and the scratch clone already exist, so the installer clones
   # nothing. The Command Line Tools check reads the real /Library, and
-  # smoke cannot run on a Mac without them.
+  # smoke cannot run on a Mac without them. The brews are the case's, from
+  # sg_brews, so this Mac's own brew and gh stay out of it.
   (cd "$c" && env -i PATH="$sg/install-stubs:$sg/stubs:/usr/bin:/bin" HOME="$c/home" SG_LOG="$c/log" \
-    SG_ENV_LOG="$c/env-log" SG_STATE="$c/state" DOTFILES="$c/clone" GIT_NAME='Test Person' GIT_PROFILES= "$@" \
+    SG_ENV_LOG="$c/env-log" SG_STATE="$c/state" DOTFILES="$c/clone" GIT_NAME='Test Person' GIT_PROFILES= \
+    DOTFILES_WORKBREW_BREW="$c/workbrew/bin/brew" DOTFILES_HOMEBREW_BREW="$c/homebrew/bin/brew" "$@" \
     sh "$root/install.sh" </dev/null >"$c/out" 2>&1)
 }
 sg_install_tail() { # $1: case name, $2: work or personal; what every installer run ends with
@@ -1206,15 +1233,16 @@ done
 ok "setup-git, a refused GitLab upload"
 
 # The installer through to its last step, against the stub mise. A personal
-# Mac never calls glab and gets no GitLab key.
+# Mac with only Homebrew's brew installs gh through it, never calls glab and
+# gets no GitLab key.
 sg_case install-personal ""
+sg_brews install-personal homebrew
 h=$sg/install-personal/home
 sg_install install-personal DOTFILES_WORK=0 GIT_EMAIL=personal@example.com \
   || fail "install.sh personal exited nonzero: $(cat "$sg/install-personal/out")"
 sg_log_is install-personal "sudo -v
-mise x github-cli -- gh auth status
+homebrew install gh
 gh auth status
-mise x github-cli -- gh auth login -w -p ssh --skip-ssh-key -s admin:public_key,admin:ssh_signing_key
 gh auth login -w -p ssh --skip-ssh-key -s admin:public_key,admin:ssh_signing_key
 ssh-keygen -t ed25519 -C personal@example.com -f $h/.ssh/id_ed25519_github
 ssh-add --apple-use-keychain $h/.ssh/id_ed25519_github
@@ -1226,16 +1254,17 @@ sg_install_env_ok install-personal
 ok "install.sh, a personal Mac"
 
 # The work Mac, fresh: the GitLab login right after the work question, the
-# GitLab key right after the GitHub key, then setup-git uploads it. A rerun
-# of both asks for nothing and sends nothing.
+# GitLab key right after the GitHub key, then setup-git uploads it. Both brews
+# exist, and gh comes from Workbrew's. A rerun of both asks for nothing,
+# sends nothing and installs nothing.
 sg_case install-work ""
+sg_brews install-work workbrew homebrew
 h=$sg/install-work/home
 sg_install install-work DOTFILES_WORK=1 GIT_EMAIL=work@example.com \
   || fail "install.sh work exited nonzero: $(cat "$sg/install-work/out")"
 sg_log_is install-work "sudo -v
-mise x github-cli -- gh auth status
+workbrew install gh
 gh auth status
-mise x github-cli -- gh auth login -w -p ssh --skip-ssh-key -s admin:public_key,admin:ssh_signing_key
 gh auth login -w -p ssh --skip-ssh-key -s admin:public_key,admin:ssh_signing_key
 mise x gitlab:gitlab-org/cli -- glab config get user --host gitlab.com
 glab config get user --host gitlab.com
@@ -1269,7 +1298,6 @@ before=$(sg_snap install-work)
 sg_install install-work GIT_EMAIL=work@example.com \
   || fail "install.sh work rerun exited nonzero: $(cat "$sg/install-work/out")"
 sg_log_is install-work "sudo -v
-mise x github-cli -- gh auth status
 gh auth status
 mise x gitlab:gitlab-org/cli -- glab config get user --host gitlab.com
 glab config get user --host gitlab.com
@@ -1304,8 +1332,20 @@ do
 done
 ok "install.sh, miserc decides the env"
 
+# Both brews missing on the personal run, and only Workbrew's on the work run,
+# so only the personal one prints Homebrew's installer. A dry run never
+# calls the stub.
+dry_brew=$tmp_home/dry-brew
+mkdir -p "$dry_brew/workbrew/bin"
+printf '#!/bin/sh\nexit 1\n' >"$dry_brew/workbrew/bin/brew"
+chmod +x "$dry_brew/workbrew/bin/brew"
+dry_installer='+ NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
 out=$(HOME=$tmp_home DOTFILES=$root DOTFILES_WORK=0 GIT_NAME=Test GIT_EMAIL=test@example.com GIT_PROFILES= \
+  DOTFILES_WORKBREW_BREW="$dry_brew/missing/workbrew" DOTFILES_HOMEBREW_BREW="$dry_brew/homebrew/bin/brew" \
   sh install.sh --dry-run) || fail "install.sh --dry-run"
+for want in "$dry_installer" "+ (brew is $dry_brew/homebrew/bin/brew)" "+ $dry_brew/homebrew/bin/brew install gh"; do
+  echo "$out" | grep -qxF -- "$want" || fail "install: a dry run with no brew did not print '$want': $out"
+done
 echo "$out" | grep -q 'ssh-keygen' || fail "install: key generation missing"
 echo "$out" | grep -q 'bootstrap --yes' || fail "install: bootstrap command missing"
 echo "$out" | grep -q 'run setup-git' || fail "install: setup-git command missing"
@@ -1314,7 +1354,12 @@ echo "$out" | grep -q 'env = \["personal"\]' || fail "install: personal answer d
 echo "$out" | grep -qE 'glab|gitlab' && fail "install: a personal dry run names glab or the GitLab key"
 echo "$out" | grep -qE 'keychain-ca|colima' && fail "install: a personal dry run exports the keychain's CAs or makes COLIMA_HOME"
 out=$(HOME=$tmp_home DOTFILES=$root DOTFILES_WORK=1 GIT_NAME=Test GIT_EMAIL=test@example.com GIT_PROFILES= \
+  DOTFILES_WORKBREW_BREW="$dry_brew/workbrew/bin/brew" DOTFILES_HOMEBREW_BREW="$dry_brew/homebrew/bin/brew" \
   sh install.sh --dry-run 2>&1) || fail "install.sh --dry-run (work)"
+for want in "+ (brew is $dry_brew/workbrew/bin/brew)" "+ $dry_brew/workbrew/bin/brew install gh"; do
+  echo "$out" | grep -qxF -- "$want" || fail "install: a dry run with Workbrew's brew did not print '$want': $out"
+done
+echo "$out" | grep -qF 'Homebrew/install' && fail "install: a dry run with Workbrew's brew printed Homebrew's installer"
 hint='mise x claude -- claude'
 echo "$out" | grep -qF -- "$hint" && fail "install: a clean dry run printed the failure hint"
 # An empty DOTFILES_WORK with no terminal to ask forces a failure.
@@ -2847,8 +2892,10 @@ bar_run() { # $1: case, $2: script under config/sketchybar, $3: NAME, then its a
   # sh keeps an assignment made before a function call, so these would
   # otherwise reach every later case.
   unset BAR_SENDER BAR_SB_EXIT
-  env -i HOME="$bar" PATH="$bar/stubs:/usr/bin:/bin" CONFIG_DIR="$root/$bar_dir" TMPDIR="$bar/tmp/" \
-    NAME="$bar_name" SENDER="$bar_sender" BAR_LOG="$bar/log" BAR_FIX="$bar/fix" BAR_SB_EXIT="$bar_sb_exit" \
+  # HOMEBREW_PREFIX keeps review.sh off this Mac's real gh.
+  env -i HOME="$bar" PATH="$bar/stubs:/usr/bin:/bin" HOMEBREW_PREFIX="$bar/homebrew" CONFIG_DIR="$root/$bar_dir" \
+    TMPDIR="$bar/tmp/" NAME="$bar_name" SENDER="$bar_sender" BAR_LOG="$bar/log" BAR_FIX="$bar/fix" \
+    BAR_SB_EXIT="$bar_sb_exit" \
     "$root/$bar_dir/$bar_script" "$@" 2>"$bar/err" || fail "bar: $bar_case exited nonzero"
   if [ -s "$bar/err" ]; then fail "bar: $bar_case wrote to stderr: $(cat "$bar/err")"; fi
 }
@@ -3158,12 +3205,14 @@ bar_fixture aerospace.windows '' 1
 bar_run "workspaces, aerospace failing" plugins/workspaces.sh workspace.1
 bar_log_is "aerospace list-windows --all --format %{workspace}|%{app-name}"
 
-# gh and glab are mise tools, so their stubs sit only in the shims directory,
-# which bar_run leaves off PATH. Each answers from a fixture per subcommand,
+# gh is a Homebrew tool, so its stub sits only in the temp HOMEBREW_PREFIX's
+# bin, and glab is a mise tool, so its stub sits only in the shims directory.
+# bar_run leaves both off PATH. Each answers from a fixture per subcommand,
 # such as gh.api, and glab records the variables it saw.
+bar_brew_bin=$bar/homebrew/bin
 bar_shims=$bar/.local/share/mise/shims
-mkdir -p "$bar_shims"
-cat >"$bar_shims/gh" <<'EOF'
+mkdir -p "$bar_brew_bin" "$bar_shims"
+cat >"$bar_brew_bin/gh" <<'EOF'
 #!/bin/sh
 echo "gh $*" >>"$BAR_LOG"
 key=gh.$1
@@ -3178,7 +3227,7 @@ key=glab.$1
 if [ -f "$BAR_FIX/$key" ]; then cat "$BAR_FIX/$key"; fi
 exit "$(cat "$BAR_FIX/$key.exit" 2>/dev/null || echo 0)"
 EOF
-chmod +x "$bar_shims"/*
+chmod +x "$bar_brew_bin/gh" "$bar_shims"/*
 # The stub sketchybar's log line for these arguments.
 bar_line() { python3 -c 'import shlex, sys; print(shlex.join(sys.argv[1:]))' sketchybar "$@"; }
 
@@ -3684,8 +3733,8 @@ tools_in() {
 
 tools_map() {
   # Inventory key, then the commands it installs, which is not the key wherever
-  # a backend prefix or a package name differs from the binary: github-cli
-  # installs gh, gitlab:gitlab-org/cli installs glab. A key missing from this
+  # a backend prefix or a package name differs from the binary:
+  # gitlab:gitlab-org/cli installs glab. A key missing from this
   # table fails below, so a tool added to [tools] cannot go unasserted by being
   # forgotten.
   #
@@ -3706,7 +3755,6 @@ tools_map() {
   # everything must resolve is the thing that is wrong, not this table.
   cat <<'MAP'
 node node
-github-cli gh
 gitlab:gitlab-org/cli glab
 java java keytool
 rust cargo rustc rustup rustfmt cargo-clippy rust-analyzer

@@ -14,10 +14,15 @@ export MISE_USE_VERSIONS_HOST_TRACK=false MISE_DISABLE_UPDATE_WARNING=1 MISE_MIN
 # Stops aube's warm-up request to npm.jsr.io. No mise config can, and .zshenv
 # says why. The installer runs under sh, which never reads .zshenv.
 export AUBE_DISABLE_SPECULATIVE_TLS=1
+# The brews bin/brew-packages picks from, by the same env vars, which the
+# smoke test points at stubs. Either one installs under Homebrew's prefix.
+workbrew=${DOTFILES_WORKBREW_BREW:-/opt/workbrew/bin/brew}
+homebrew=${DOTFILES_HOMEBREW_BREW:-/opt/homebrew/bin/brew}
+prefix=${homebrew%/bin/brew}
 # The installer runs under sh, which never reads .zprofile, so this is the
-# line that puts brew's tools on PATH. Bootstrap's task calls bat, jq and
-# claude, which the shared Brewfile installs.
-export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$PATH"
+# line that puts brew's tools on PATH. The GitHub login calls gh, and
+# bootstrap's task calls bat, jq and claude, which the shared Brewfile installs.
+export PATH="$prefix/bin:$prefix/sbin:$PATH"
 
 die() { echo "install: $*" >&2; exit 1; }
 case "${1:-}" in "") ;; --dry-run) DRY_RUN=1 ;; *) die "unknown argument $1" ;; esac
@@ -51,7 +56,6 @@ reset=$(printf '\033[0m')
 if [ -n "${NO_COLOR:-}" ] || [ ! -t 1 ]; then bold= reset=; fi
 say() { printf '%s==> %s%s\n' "$bold" "$*" "$reset"; }
 run() { if [ "${DRY_RUN:-}" ]; then printf '+ %s\n' "$*"; else "$@"; fi; }
-gh() { "$mise" x github-cli -- gh "$@"; }
 # The overlay's [env] never reaches the installer, so glab's is set here, the
 # same three as setup-git sets.
 glab() {
@@ -109,7 +113,8 @@ else
   fi
 fi
 
-# One password covers the CLT, /opt/homebrew and, on a personal Mac, the GarageBand loops.
+# One password covers the CLT, Homebrew's installer when no brew exists and, on
+# a personal Mac, the GarageBand loops.
 run sudo -v
 if [ -z "${DRY_RUN:-}" ]; then
   while kill -0 "$$" 2>/dev/null; do sudo -n true 2>/dev/null || true; sleep 60; done &
@@ -119,6 +124,24 @@ fi
 if [ ! -x "$mise" ]; then
   if [ "${DRY_RUN:-}" ]; then echo "+ curl -fsSL https://mise.run | sh"; else curl -fsSL https://mise.run | sh; fi
 fi
+
+# bin/brew-packages's rule, since the clone that holds it doesn't exist yet.
+# Under Workbrew, Homebrew's own brew refuses to run, so Workbrew's brew comes
+# first. Homebrew's installer runs only when neither brew exists, and the
+# password above covers its sudo.
+if [ -x "$workbrew" ]; then
+  brew=$workbrew
+elif [ -x "$homebrew" ]; then
+  brew=$homebrew
+else
+  # shellcheck disable=SC2016  # the eval below expands it
+  installer='NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+  if [ "${DRY_RUN:-}" ]; then printf '+ %s\n' "$installer"; else eval "$installer"; fi
+  brew=$homebrew
+fi
+if [ "${DRY_RUN:-}" ]; then printf '+ (brew is %s)\n' "$brew"; fi
+# The shared Brewfile lists gh too, but the GitHub login below needs it now.
+[ -x "$prefix/bin/gh" ] || run "$brew" install gh
 
 # Before the clone and the CLT exist. -p ssh keeps gh out of git's credential
 # config; key upload is setup-git's job.

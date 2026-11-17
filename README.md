@@ -6,7 +6,7 @@ inspired by [nicknisi/dotfiles](https://github.com/nicknisi/dotfiles).
 ## Bootstrap
 
 1. In Setup Assistant: sign in to the Apple Account, decline Apple Intelligence, choose the Finnish keyboard and nothing else, skip Siri.
-2. Open Terminal and run the line below. Stay for the prompts, about two minutes, then leave.
+2. Open Terminal and run the line below. Stay for the prompts, then leave. They take about two minutes, plus Homebrew's own install on a Mac without Homebrew, because the GitHub login needs brew's gh.
 
    ```sh
    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/iamstuba/dotfiles/main/install.sh)"

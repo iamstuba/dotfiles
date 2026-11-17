@@ -18,9 +18,8 @@ system_packages.managers = []
 system_packages.sudo = false
 
 [tools]
-# The shared Brewfile installs the other CLI tools, Neovim and Claude Code.
+# The shared Brewfile installs the other CLI tools, gh, Neovim and Claude Code.
 node = "lts"        # stays first, so an npm: tool added later runs on it
-github-cli = "latest" # the installer needs it before the clone exists
 
 # marksman stays on mise, because Homebrew deprecated it. The shared Brewfile
 # installs the other language servers; mason is out.
