@@ -21,7 +21,9 @@ not command output. Name the decision, not its number. Naming the tracker as a
 mechanism, the way the sections here do, is fine.
 
 Nothing tracked says how the work Mac is run either. Name the apps it uses,
-such as Chrome, and leave out how it is managed and what watches it.
+such as Chrome. A tracked file may name a tool that manages the Mac, such as
+Workbrew, where the file has to work with it. It never says how that tool is
+configured, what it reports, or what else watches the Mac.
 
 ### Domain docs
 

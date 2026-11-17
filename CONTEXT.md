@@ -24,6 +24,10 @@ _Avoid_: allow, approve, whitelist
 A Homebrew formula or cask that lives in a third-party tap rather than homebrew-core. mise cannot resolve one, so these stay out of the manifest's packages and brew installs them directly.
 _Avoid_: brew fallback, source build, third-party formula
 
+**Workbrew's brew**:
+`/opt/workbrew/bin/brew`, the only `brew` that may write to Homebrew on the work Mac once Workbrew manages it. Homebrew's own `brew` refuses to run there. A personal Mac has no Workbrew.
+_Avoid_: the wrapper, managed brew
+
 **Bootstrap**:
 One run of the manifest that takes a fresh Mac to fully configured. Rerunnable.
 _Avoid_: install, provision, setup
