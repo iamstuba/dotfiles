@@ -3020,6 +3020,8 @@ want += [
     ("cpu", "right", {"update_freq": "5", "script": f"{plugins}/cpu.sh"}, []),
     ("watchdog", "right", {"update_freq": "10", "script": f"{plugins}/watchdog.sh",
                            "drawing": "off"}, []),
+    # Between cpu and the review chips, since watchdog never draws.
+    ("herdr", "right", {"update_freq": "3", "script": f"{plugins}/herdr.sh", "drawing": "off"}, []),
 ]
 # Added last, so they sit nearest the notch. The chips stay hidden until their
 # first fetch, and each popup's ten rows until a fetch fills them. SketchyBar
@@ -3409,6 +3411,57 @@ bar_fixture glab.api '{"data": {"currentUser": {"reviewRequestedMergeRequests": 
 bar_run "gitlab chip, hostile title" plugins/review.sh review.gitlab gitlab
 bar_hostile_is review.gitlab "acme/platform/api!7  $bar_hostile_label" \
   "https://gitlab.com/acme/platform/api/-/merge_requests/7?q=';touch pwned;'"
+
+# herdr is a Homebrew tool too, so its stub sits beside gh and glab.
+cat >"$bar_brew_bin/herdr" <<'EOF'
+#!/bin/sh
+echo "herdr $*" >>"$BAR_LOG"
+if [ -f "$BAR_FIX/herdr" ]; then cat "$BAR_FIX/herdr"; fi
+exit "$(cat "$BAR_FIX/herdr.exit" 2>/dev/null || echo 0)"
+EOF
+chmod +x "$bar_brew_bin/herdr"
+bar_herdr_json() { # then each agent's status
+  python3 - "$@" <<'EOF'
+import json, sys
+agents = [{"terminal_id": f"t{n}", "agent_status": s, "workspace_id": "w1", "tab_id": "w1:t1",
+           "pane_id": f"w1:p{n}", "focused": False, "revision": 1} for n, s in enumerate(sys.argv[1:])]
+print(json.dumps({"id": "cli:agent:list", "result": {"type": "agent_list", "agents": agents}}))
+EOF
+}
+bar_herdr_font="icon.font=Monaspace Neon:Regular:13.0"
+# herdr 0.9.5 prints its error as JSON on stdout and exits 1 when no server runs.
+bar_reset
+bar_fixture herdr '{"id":"cli:agent:list","error":{"code":"server_not_running","message":"no herdr server is running"}}' 1
+bar_run "herdr, no server" plugins/herdr.sh herdr
+bar_log_is "herdr agent list
+sketchybar --set herdr drawing=off"
+bar_reset
+mv "$bar_brew_bin/herdr" "$bar/herdr.away"
+bar_run "herdr, missing" plugins/herdr.sh herdr
+mv "$bar/herdr.away" "$bar_brew_bin/herdr"
+bar_log_is "sketchybar --set herdr drawing=off"
+bar_reset
+bar_fixture herdr "$(bar_herdr_json idle done unknown)"
+bar_run "herdr, all idle" plugins/herdr.sh herdr
+bar_log_is "herdr agent list
+sketchybar --set herdr drawing=off"
+bar_reset
+bar_fixture herdr "$(bar_herdr_json working idle blocked working done)"
+bar_run "herdr, 2 working and 1 blocked" plugins/herdr.sh herdr
+bar_log_is "herdr agent list
+$(bar_line --set herdr drawing=on icon=2 icon.drawing=on icon.color="$bar_accent" "$bar_herdr_font" \
+  label=1 label.drawing=on label.color="$bar_red")"
+bar_reset
+bar_fixture herdr "$(bar_herdr_json working working idle)"
+bar_run "herdr, 2 working" plugins/herdr.sh herdr
+bar_log_is "herdr agent list
+$(bar_line --set herdr drawing=on icon=2 icon.drawing=on icon.color="$bar_accent" "$bar_herdr_font" \
+  label.drawing=off)"
+bar_reset
+bar_fixture herdr "$(bar_herdr_json blocked idle)"
+bar_run "herdr, 1 blocked" plugins/herdr.sh herdr
+bar_log_is "herdr agent list
+$(bar_line --set herdr drawing=on icon.drawing=off label=1 label.drawing=on label.color="$bar_red")"
 
 bar_sb_log_is() { # $1: the sketchybar calls the last bar_run must have made
   [ "$(grep '^sketchybar ' "$bar/log")" = "$1" ] || fail "bar: $bar_case logged:

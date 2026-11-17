@@ -109,7 +109,7 @@ The terminal layer that owns the panes coding agents run in and reports whether 
 _Avoid_: orchestrator, harness, agent manager
 
 **Bar**:
-The strip at the top of every display that replaces the hidden macOS menu bar. Shows workspaces, AeroSpace's mode, review requests and machine readouts. SketchyBar.
+The strip at the top of every display that replaces the hidden macOS menu bar. Shows workspaces, AeroSpace's mode, review requests, how many agents are working or blocked, and machine readouts. SketchyBar.
 _Avoid_: menu bar, status bar, top bar
 
 **Theme**:
