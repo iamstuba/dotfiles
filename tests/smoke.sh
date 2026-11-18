@@ -2270,6 +2270,31 @@ setup_claude_work
 [ "$(stat -f "%i %m" "$cc/home/.claude/settings.json")" = "$ccw_before" ] || fail "setup-claude:work rewrote an unchanged file"
 ok "setup-claude:work"
 
+# The merge's fragment check passes on jq's own error, so a jq that cannot run
+# is not reported as a broken fragment.
+mcs_run() { # $1: the directory whose jq the merge uses, $2: the fragment
+  HOME=$cc/home PATH=$1:/usr/bin:/bin "$root/bin/merge-claude-settings" "$2" >/dev/null 2>"$cc/err"
+}
+mkdir -p "$cc/badjq"
+printf '#!/bin/sh\necho "jq stub cannot run" >&2\nexit 2\n' >"$cc/badjq/jq"
+chmod +x "$cc/badjq/jq"
+printf '{' >"$cc/broken.json"
+printf '[]' >"$cc/array.json"
+mcs_run "$cc_jq_dir" "$cc/broken.json" && fail "merge-claude-settings merged a fragment that is not JSON"
+case $(cat "$cc/err") in
+  *"$cc/broken.json does not parse as a JSON object: jq: parse error"*) ;;
+  *) fail "merge-claude-settings on a fragment that is not JSON said: $(cat "$cc/err")" ;;
+esac
+mcs_run "$cc_jq_dir" "$cc/array.json" && fail "merge-claude-settings merged a fragment that is an array"
+[ "$(cat "$cc/err")" = "merge-claude-settings: $cc/array.json does not parse as a JSON object" ] \
+  || fail "merge-claude-settings on an array fragment said: $(cat "$cc/err")"
+mcs_run "$cc/badjq" "$root/home/.claude/settings.work.json" && fail "merge-claude-settings ran with a jq that cannot run"
+case $(cat "$cc/err") in
+  *"jq stub cannot run"*) ;;
+  *) fail "merge-claude-settings hid jq's own error: $(cat "$cc/err")" ;;
+esac
+ok "merge-claude-settings errors"
+
 # pi's settings. The provider and model are the pair that decides whether a
 # fresh Mac's first `pi` opens on a working model or on a login error, so both
 # are asserted by name; they flip together the day there is a ChatGPT

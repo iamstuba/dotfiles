@@ -21,7 +21,10 @@ settings=$HOME/.claude/settings.json
 # leaves HOME as it was.
 [ -f "$fragment" ] || die "$fragment is missing"
 # -e fails on no output too, so an empty or truncated file cannot merge nothing.
-jq -e 'type == "object"' "$fragment" >/dev/null 2>&1 || die "$fragment does not parse as a JSON object"
+# jq's own error goes into the message, so a jq that cannot run is not taken
+# for a broken fragment.
+jq_err=$(jq -e 'type == "object"' "$fragment" 2>&1 >/dev/null) \
+  || die "$fragment does not parse as a JSON object${jq_err:+: $jq_err}"
 
 mkdir -p "$HOME/.claude"
 [ -e "$settings" ] || printf '{}\n' >"$settings"
