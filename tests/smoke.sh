@@ -2083,27 +2083,49 @@ probe_yaml "claude work settings" home/.claude/settings.work.json '{
     "Bash(helm *repo add *)",
     "Bash(gcloud *)",
     "Bash(*testkube *run *)",
+    "Bash(*testkube *run)",
     "Bash(*testkube *create *)",
+    "Bash(*testkube *create)",
     "Bash(*testkube *update *)",
+    "Bash(*testkube *update)",
     "Bash(*testkube *delete *)",
+    "Bash(*testkube *delete)",
     "Bash(*testkube *abort *)",
+    "Bash(*testkube *abort)",
     "Bash(*testkube *cancel *)",
+    "Bash(*testkube *cancel)",
     "Bash(*testkube *set *)",
+    "Bash(*testkube *set)",
     "Bash(*testkube *enable *)",
+    "Bash(*testkube *enable)",
     "Bash(*testkube *disable *)",
+    "Bash(*testkube *disable)",
     "Bash(*testkube *purge *)",
+    "Bash(*testkube *purge)",
     "Bash(*testkube *migrate *)",
+    "Bash(*testkube *migrate)",
     "Bash(*testkube *agent *)",
+    "Bash(*testkube *agent)",
     "Bash(*testkube *cloud *)",
+    "Bash(*testkube *cloud)",
     "Bash(*testkube *pro *)",
+    "Bash(*testkube *pro)",
     "Bash(*testkube *login *)",
+    "Bash(*testkube *login)",
     "Bash(*testkube *init *)",
+    "Bash(*testkube *init)",
     "Bash(*testkube *install *)",
+    "Bash(*testkube *install)",
     "Bash(*testkube *upgrade *)",
+    "Bash(*testkube *upgrade)",
     "Bash(*testkube *devbox *)",
+    "Bash(*testkube *devbox)",
     "Bash(*testkube *create-ticket *)",
+    "Bash(*testkube *create-ticket)",
     "Bash(*testkube *debug *)",
+    "Bash(*testkube *debug)",
     "Bash(*testkube *mcp *)",
+    "Bash(*testkube *mcp)",
     "Bash(git *push *--force*)",
     "Bash(git *push -f*)",
     "Bash(git *push * -f*)",
@@ -2224,9 +2246,9 @@ ccw_lists=$(jq -c --argjson deny "$ccw_deny" --argjson ask "$ccw_ask" '[
     ($deny - .permissions.deny == []), ($ask - .permissions.ask == []),
     (.permissions.deny | length), (.permissions.ask | length)
   ]' "$cc/home/.claude/settings.json")
-# The Mac's one own entry plus 57 work denies, and its one own entry plus 80
+# The Mac's one own entry plus 57 work denies, and its one own entry plus 102
 # work asks.
-[ "$ccw_lists" = "[true,true,true,true,58,81]" ] \
+[ "$ccw_lists" = "[true,true,true,true,58,103]" ] \
   || fail "setup-claude:work left duplicates or missing entries (unique deny, unique ask, all deny, all ask, counts): $ccw_lists"
 # A run that changes the file keeps its mode and inode. mktemp makes 600
 # files, so the mode alone would pass a merge that moved its temp file over.
