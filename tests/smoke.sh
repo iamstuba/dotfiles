@@ -2172,9 +2172,16 @@ EOF
 chmod +x "$cc/stubs/claude"
 cc_run=$(yq -p toml -o json mise.toml | yq -r '.tasks."setup-claude".run' | sed "s|{{ config_root }}|$root|g") \
   || fail "setup-claude has no run text"
+# The merge gets jq's own directory on PATH, never mise's shims. Under the
+# temp HOME a shim cannot read the caller's mise trust, so it refuses this
+# repo's mise.work.toml and jq never runs.
+cc_shims=${MISE_DATA_DIR:-$HOME/.local/share/mise}/shims
+cc_jq=$(PATH=$(printf '%s\n' "$PATH" | tr : '\n' | grep -Fvx "$cc_shims" | paste -sd : -); command -v jq) \
+  || fail "setup-claude: no jq on PATH outside $cc_shims"
+cc_jq_dir=$(dirname "$cc_jq")
 setup_claude() { # $1: what the stub already has
   : >"$cc/log"
-  HOME=$cc/home PATH=$cc/stubs:$(dirname "$(command -v jq)"):/usr/bin:/bin CC_LOG=$cc/log CLAUDE_HAS=$1 \
+  HOME=$cc/home PATH=$cc/stubs:$cc_jq_dir:/usr/bin:/bin CC_LOG=$cc/log CLAUDE_HAS=$1 \
     /bin/sh -c "$cc_run" 2>"$cc/err" || fail "setup-claude exited nonzero: $(cat "$cc/err")"
 }
 cc_deny=$(yq -p json -o json -I0 '.permissions.deny' home/.claude/settings.shared.json)
@@ -2212,7 +2219,7 @@ ccw_run=$(yq -p toml -o json mise.work.toml | yq -r '.tasks."setup-claude:work".
   || fail "setup-claude:work's run text could not be read from mise.work.toml"
 [ -n "$ccw_run" ] || fail "setup-claude:work has no run text in mise.work.toml"
 setup_claude_work() {
-  HOME=$cc/home PATH=$(dirname "$(command -v jq)"):/usr/bin:/bin \
+  HOME=$cc/home PATH=$cc_jq_dir:/usr/bin:/bin \
     /bin/sh -c "$ccw_run" 2>"$cc/err" || fail "setup-claude:work exited nonzero: $(cat "$cc/err")"
 }
 ccw_deny=$(yq -p json -o json -I0 '.permissions.deny' home/.claude/settings.work.json)
