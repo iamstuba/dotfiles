@@ -32,6 +32,21 @@ AWS_CLI_SESSION_ID_DISABLED = "true"
 # The AWS CLI reads this file in place of its own CA store, so it names the
 # whole bundle and not extra.pem alone.
 AWS_CA_BUNDLE = "{{ env.HOME }}/.local/share/corporate-ca/bundle.pem"
+# gcloud also reads this file in place of its own CA store.
+CLOUDSDK_CORE_CUSTOM_CA_CERTS_FILE = "{{ env.HOME }}/.local/share/corporate-ca/bundle.pem"
+# gcloud otherwise reports usage to Google and asks for surveys.
+CLOUDSDK_CORE_DISABLE_USAGE_REPORTING = "true"
+CLOUDSDK_SURVEY_DISABLE_PROMPTS = "true"
+# The update check advises gcloud components update, which can't write
+# Workbrew's prefix. update:apps upgrades the cask instead.
+CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK = "true"
+# From 2.15.0 the Testkube CLI sends no telemetry while DO_NOT_TRACK is set.
+# Other tools that read DO_NOT_TRACK turn theirs off too. Work only, because
+# the shared config would change tools on the personal Mac that nobody has
+# checked.
+DO_NOT_TRACK = "1"
+# Testkube otherwise checks for its own new releases. update:apps upgrades it.
+TESTKUBE_DISABLE_UPDATE_CHECK = "1"
 # k6 otherwise reports usage to Grafana after every k6 run, and sends a
 # script's unknown k6/x/ imports to Grafana's build service.
 K6_NO_USAGE_REPORT = "true"

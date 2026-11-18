@@ -3996,9 +3996,17 @@ if command -v mise >/dev/null 2>&1; then
     || fail "work env: settings get under work failed: $(cat "$env_home/stderr")"
   [ "$(printf '%s' "$env_idiomatic" | jq -c 'sort')" = '["node","rust"]' ] \
     || fail "work env: idiomatic_version_file_enable_tools is $env_idiomatic, not node and rust"
-  WORK_ENV=$work_env WANT_DIR=$env_home/.config/glab-cli WANT_HOME=$env_home python3 - <<'PY' || fail "work env"
+  # A lost line here sends gcloud's or Testkube's telemetry and update checks
+  # again. bundle.pem's path is templated, so the CA line is checked apart.
+  gcloud_testkube_env='{"CLOUDSDK_CORE_DISABLE_USAGE_REPORTING": "true",
+    "CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK": "true",
+    "CLOUDSDK_SURVEY_DISABLE_PROMPTS": "true", "DO_NOT_TRACK": "1",
+    "TESTKUBE_DISABLE_UPDATE_CHECK": "1"}'
+  WORK_ENV=$work_env WANT_DIR=$env_home/.config/glab-cli WANT_HOME=$env_home \
+    GCLOUD_TESTKUBE_ENV=$gcloud_testkube_env python3 - <<'PY' || fail "work env"
 import json, os, sys
 env = json.loads(os.environ["WORK_ENV"])
+gcloud_testkube_env = json.loads(os.environ["GCLOUD_TESTKUBE_ENV"])
 errs = []
 if env.get("GLAB_CONFIG_DIR") != os.environ["WANT_DIR"]:
     errs.append(f"GLAB_CONFIG_DIR renders to {env.get('GLAB_CONFIG_DIR')!r}, not {os.environ['WANT_DIR']!r}")
@@ -4034,6 +4042,17 @@ for k, value in (("AWS_CLI_SESSION_ID_DISABLED", "true"), ("K6_NO_USAGE_REPORT",
                  ("K6_AUTO_EXTENSION_RESOLUTION", "false")):
     if env.get(k) != value:
         errs.append(f"{k} renders to {env.get(k)!r}, not {value!r}")
+# gcloud's bundled store lacks the keychain CAs that bundle.pem holds.
+if env.get("CLOUDSDK_CORE_CUSTOM_CA_CERTS_FILE") != bundle:
+    errs.append(f"CLOUDSDK_CORE_CUSTOM_CA_CERTS_FILE renders to {env.get('CLOUDSDK_CORE_CUSTOM_CA_CERTS_FILE')!r}, not {bundle!r}")
+for k, value in gcloud_testkube_env.items():
+    if env.get(k) != value:
+        errs.append(f"{k} renders to {env.get(k)!r}, not {value!r}")
+# CLOUDSDK_CONFIG would move the ADC file the GKE login reads. The other two
+# are an untested hidden property and logs that already sit in a denied dir.
+for k in ("CLOUDSDK_CONFIG", "CLOUDSDK_CORE_CHECK_GCE_METADATA", "CLOUDSDK_CORE_DISABLE_FILE_LOGGING"):
+    if k in env:
+        errs.append(f"the work overlay sets {k}")
 # prost-build finds protoc on PATH. PROTOC would pin one path for every repo.
 # A global DOCKER_API_VERSION pins the CLI too, and TESTCONTAINERS_HOST_OVERRIDE
 # stays per repo with it.
@@ -4051,6 +4070,16 @@ PY
     || fail "work env: mise env under personal failed: $(cat "$env_home/stderr")"
   [ "$(printf '%s' "$personal_env" | jq 'has("DOCKER_HOST")')" = false ] \
     || fail "work env: MISE_ENV=personal renders DOCKER_HOST"
+  base_env=$(env_mise "" env --json) \
+    || fail "work env: mise env with no env failed: $(cat "$env_home/stderr")"
+  leaked() { # $1: mise env --json output
+    printf '%s' "$1" | jq -r --argjson k "$gcloud_testkube_env" \
+      '. as $e | [$k | keys[], "CLOUDSDK_CORE_CUSTOM_CA_CERTS_FILE"] | map(select(. as $x | $e | has($x))) | join(" ")'
+  }
+  [ -z "$(leaked "$personal_env")" ] \
+    || fail "work env: MISE_ENV=personal renders $(leaked "$personal_env"), which only the work overlay sets"
+  [ -z "$(leaked "$base_env")" ] \
+    || fail "work env: no MISE_ENV renders $(leaked "$base_env"), which only the work overlay sets"
   ok "work env"
 else
   printf 'skip work env: mise is not on PATH\n'
