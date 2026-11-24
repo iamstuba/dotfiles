@@ -23,9 +23,13 @@
 
 ## Scratch notes
 
-- Notes, specs, and tickets go in `<main checkout>/.scratch/`, never in a
-  worktree's `.scratch/`. Write them by absolute path without leaving the
-  worktree.
+- Notes, specs, tickets and drafts go in `<main checkout>/.scratch/`, always.
+  Worktrees get removed when the work ends, and `.scratch/` must outlive
+  them. A worktree's `.scratch/` and the session scratchpad don't count.
+- A worktree session can't write outside its worktree. For each write to
+  `.scratch/`, leave with ExitWorktree `keep`, write by absolute path, then
+  return with EnterWorktree `path`. This standing instruction is the request
+  ExitWorktree needs.
 - `.scratch/` is local-only and globally git-ignored. Never commit it.
 
 Everything below applies to everything you produce. Code and comments count as
