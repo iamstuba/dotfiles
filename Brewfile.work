@@ -29,11 +29,6 @@ brew "kubernetes-cli"
 # Work repos render their charts locally with helm template. A repo's own mise
 # pin wins inside it wherever mise is active.
 brew "helm"
-# gcloud only mints the application-default credentials that the GKE
-# context's kubeconfig login reads. The user can't write Workbrew's prefix, so
-# gcloud's own updater fails, and a plain brew upgrade skips an auto_updates
-# cask. greedy makes update:apps upgrade it.
-cask "gcloud-cli", greedy: true
 # The user and agents read test executions with it.
 brew "testkube"
 brew "k6"
