@@ -1,17 +1,17 @@
 #!/opt/homebrew/bin/bash
-# $1: github or gitlab. Each forge's fetch prints the total count, then up to
-# ten repo<TAB>number<TAB>title<TAB>url rows, and fails when the chip should
-# hide. The renderer below never sees forge JSON.
+# $1: github, gitlab or close. Each forge's fetch prints the total count, then
+# up to ten repo<TAB>number<TAB>title<TAB>url rows, and fails when the chip
+# should hide. The renderer below never sees forge JSON.
 # gh and glab are Homebrew tools, off SketchyBar's PATH. jq is macOS's own,
 # called by path.
 export PATH=${HOMEBREW_PREFIX:-/opt/homebrew}/bin:$PATH
 
 hide() { sketchybar --set "$NAME" drawing=off popup.drawing=off; }
 
-# The pointer has left the chip and its popup, or another window took focus.
-# A fetch here would cost a request on every pass of the mouse.
-if [[ ${SENDER:-} == mouse.exited.global || ${SENDER:-} == aerospace_focus_change ]]; then
-  sketchybar --set "$NAME" popup.drawing=off
+# The pointer has left the chips and their popups, or another window took
+# focus. A fetch here would cost a request on every pass of the mouse.
+if [[ ${1:-} == close ]]; then
+  sketchybar --set review.gitlab popup.drawing=off --set review.github popup.drawing=off
   exit 0
 fi
 

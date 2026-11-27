@@ -69,8 +69,8 @@ sketchybar --add item herdr right \
 # each its URL. A row lights up under the pointer. Its drawing=off comes after
 # the colour, since setting a colour turns the background on. The popup grows
 # leftwards, since the chips sit near the right edge. SketchyBar has no event
-# for a click elsewhere, so the popup closes when the pointer leaves the chip
-# and the popup. A fast pointer can slip past that, so it also closes when
+# for a click elsewhere, so the popup closes when the pointer leaves the chips
+# and the popups. A fast pointer can slip past that, so it also closes when
 # the event loop reports that another window took focus.
 sketchybar --add event aerospace_focus_change
 for forge in gitlab github; do
@@ -83,7 +83,7 @@ for forge in gitlab github; do
       popup.align=right popup.background.color="$POPUP_BG"
       popup.background.border_color="$HAIRLINE" popup.background.border_width=1
       popup.background.corner_radius=6
-    --subscribe "$chip" system_woke mouse.exited.global aerospace_focus_change)
+    --subscribe "$chip" system_woke)
   for n in {1..10}; do
     review+=(--add item "$chip.row.$n" "popup.$chip"
       --set "$chip.row.$n" drawing=off icon.drawing=off label.padding_left=8 label.padding_right=8
@@ -93,6 +93,12 @@ for forge in gitlab github; do
   done
   sketchybar "${review[@]}"
 done
+# SketchyBar restarts an item's update_freq count on every run of its script,
+# for any event. A chip that took the close events would never poll while
+# focus kept changing, so a hidden item closes both popups instead.
+sketchybar --add item review.close right \
+  --set review.close drawing=off script="$plugins/review.sh close" \
+  --subscribe review.close mouse.exited.global aerospace_focus_change
 
 # The loop starts after the items exist, since a --set on a missing item ends
 # it. It ends an older copy of itself, so a reload leaves one.

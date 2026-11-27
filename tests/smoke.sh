@@ -3085,16 +3085,21 @@ want += [
 # first fetch, and each popup's ten rows until a fetch fills them. SketchyBar
 # has no event for a click elsewhere, so a popup closes when the pointer
 # leaves it, or when the event loop says another window took focus.
+# SketchyBar restarts an item's poll count on every run of its script, so a
+# chip that took those events would never poll while focus kept changing. A
+# hidden item takes them instead.
 for forge in ("gitlab", "github"):
     chip = f"review.{forge}"
     want.append((chip, "right", {"update_freq": "120", "script": f"{plugins}/review.sh {forge}",
                                  "click_script": "sketchybar --set $NAME popup.drawing=toggle",
                                  "drawing": "off"},
-                 ["system_woke", "mouse.exited.global", "aerospace_focus_change"]))
+                 ["system_woke"]))
     want += [(f"{chip}.row.{n}", f"popup.{chip}", {"drawing": "off", "script": f"{plugins}/hover.sh"},
               ["mouse.entered", "mouse.exited"]) for n in range(1, 11)]
-# The event loop triggers this on a focus change, and the review chips close
-# their popups on it.
+want.append(("review.close", "right", {"script": f"{plugins}/review.sh close", "drawing": "off"},
+             ["mouse.exited.global", "aerospace_focus_change"]))
+# The event loop triggers this on a focus change, and review.close closes the
+# popups on it.
 if custom != ["aerospace_focus_change"]:
     errs.append(f"custom events are {custom}, expected ['aerospace_focus_change']")
 if list(items) != [w[0] for w in want]:
@@ -3374,11 +3379,11 @@ bar_fixture gh.api '{"total_count": 1, "items": [{"repository_url": "https://api
 bar_run "github chip, hostile title" plugins/review.sh review.github github
 bar_hostile_is review.github "acme/web#7  $bar_hostile_label" "https://github.com/acme/web/pull/7?q=';touch pwned;'"
 
-# The pointer leaving a chip and its popup only closes the popup. A fetch
-# here would cost a request on every pass of the mouse.
+# The pointer leaving the chips and their popups only closes both popups. A
+# fetch here would cost a request on every pass of the mouse.
 bar_reset
-BAR_SENDER=mouse.exited.global bar_run "gitlab chip, pointer gone" plugins/review.sh review.gitlab gitlab
-bar_log_is "$(bar_line --set review.gitlab popup.drawing=off)"
+BAR_SENDER=mouse.exited.global bar_run "popups, pointer gone" plugins/review.sh review.close close
+bar_log_is "$(bar_line --set review.gitlab popup.drawing=off --set review.github popup.drawing=off)"
 
 # A popup row lights up under the pointer.
 bar_reset
@@ -3389,10 +3394,10 @@ BAR_SENDER=mouse.exited bar_run "row hover gone" plugins/hover.sh review.gitlab.
 bar_log_is "$(bar_line --set review.gitlab.row.2 background.drawing=off)"
 
 # A click in another window moves AeroSpace's focus, and the event loop
-# passes that on. The popup closes without a fetch.
+# passes that on. Both popups close without a fetch.
 bar_reset
-BAR_SENDER=aerospace_focus_change bar_run "github chip, focus moved" plugins/review.sh review.github github
-bar_log_is "$(bar_line --set review.github popup.drawing=off)"
+BAR_SENDER=aerospace_focus_change bar_run "popups, focus moved" plugins/review.sh review.close close
+bar_log_is "$(bar_line --set review.gitlab popup.drawing=off --set review.github popup.drawing=off)"
 
 # A personal Mac has no glab at all.
 bar_reset
